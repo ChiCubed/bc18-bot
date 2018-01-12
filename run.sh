@@ -17,8 +17,8 @@ fi
 
 echo "$ gcc extra.c -c -O -g $INCLUDES"
 gcc extra.c -c -O -g $INCLUDES
-echo "$ gcc main.c -c -O -g $INCLUDES"
-gcc main.cpp -std=c++11 -c -O -g $INCLUDES
+echo "$ gcc main.cpp -c -O -g $INCLUDES"
+g++ main.cpp -std=c++11 -c -O -g $INCLUDES
 echo "$ gcc main.o extra.o -o main $LIBRARIES"
 gcc main.o extra.o -o main $LIBRARIES
 
