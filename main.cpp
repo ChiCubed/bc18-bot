@@ -27,7 +27,8 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     int r, c, numberOfWorkers;
     int mars[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
-    int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60];
+    int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
+    set<pair<int, int> > taken;
     bc_AsteroidPattern* asteroidPattern;
     void init(bc_GameController* gc)
     {
@@ -164,6 +165,10 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             {
                 loc = new_bc_MapLocation(Mars, i, j);
                 karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+            //    if (karbonite[i][j]) printf("at %d %d\n", i, j);
+          //      if (bc_GameController_has_unit_at_location(gc, loc)) hasUnit[i][j] = 1;
+            //    else hasUnit[i][j] = 0;
+                hasUnit[i][j] = 0;
                 delete_bc_MapLocation(loc);
             }
         }
@@ -204,15 +209,23 @@ bool enemyFactory[60][60], enemyRocket[60][60];
 
 void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbonite on mars
 {
+    mars.taken.clear();
     mars.updateKarboniteAmount(gc);
-    bc_MapLocation* loc = new_bc_MapLocation(Mars, 0, 0);
     bc_VecUnit *units = bc_GameController_my_units(gc); 
     int len = bc_VecUnit_len(units);
+    vector<bc_Unit*> canMove;
     for (int l = 0; l < len; l++) 
     {
         bc_Unit *unit = bc_VecUnit_index(units, l);
         bc_UnitType unitType = bc_Unit_unit_type(unit);
         uint16_t id = bc_Unit_id(unit);
+        bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+        mars.hasUnit[x][y] = 1;
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
         if (unitType == Worker)
         {
             for (int i = 8; i >= 0; i--)
@@ -224,6 +237,8 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                     break; // we can only harvest 1 per turn :(
                 }
             }
+            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit);
+            else delete_bc_Unit(unit);
         }
         else if (unitType == Rocket) // unload
         {
@@ -245,10 +260,94 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                 bc_GameController_disintegrate_unit(gc, id);
             }
             else printf("%d\n", len);*/
+            delete_bc_Unit(unit);
         }   
-        delete_bc_Unit(unit);
     }
-    delete_bc_MapLocation(loc);
+    while (!canMove.empty()) // where should we move to
+    {
+        bool worked = false;
+        mars.upto++;
+        queue<pair<int, int> > q;
+        for (int i = 0; i < canMove.size(); i++)
+        {
+            auto unit = canMove[i];
+            bc_Location* loc = bc_Unit_location(unit);
+            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+            int x = bc_MapLocation_x_get(mapLoc);
+            int y = bc_MapLocation_y_get(mapLoc);
+            mars.seen[x][y] = mars.upto;
+            mars.robotthatlead[x][y] = i;
+            mars.firstdir[x][y] = 8;
+            q.emplace(x, y);
+            delete_bc_MapLocation(mapLoc);
+            delete_bc_Location(loc);
+        }
+        while (!q.empty())
+        {
+            int x = q.front().first;
+            int y = q.front().second;
+          //  if (x == 12 && y == 10) printf("YAYAYAY\n");
+            printf("%d %d\n", x, y);
+            q.pop();
+            if (mars.karbonite[x][y] && mars.taken.find(make_pair(x, y)) == mars.taken.end())
+            {
+                // We've reached some karbonite. Send the robot in question here;
+                mars.taken.insert(make_pair(x, y));
+
+                bc_Unit* unit = canMove[mars.robotthatlead[x][y]];
+                canMove.erase(canMove.begin()+mars.robotthatlead[x][y]);
+                int dir = mars.firstdir[x][y];
+                uint16_t id = bc_Unit_id(unit);
+                // Update the location of robots;
+                bc_Location* loc = bc_Unit_location(unit);
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                int i = bc_MapLocation_x_get(mapLoc);
+                int j = bc_MapLocation_y_get(mapLoc);
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
+                mars.hasUnit[i][j] = 0;
+                if (bc_GameController_can_move(gc, id, (bc_Direction)dir))
+                {
+                    bc_GameController_move_robot(gc, id, (bc_Direction)dir);
+                }
+                // Set the newloc
+                loc = bc_Unit_location(unit);
+                mapLoc = bc_Location_map_location(loc);
+                i = bc_MapLocation_x_get(mapLoc);
+                j = bc_MapLocation_y_get(mapLoc);
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
+                mars.hasUnit[i][j] = 1;
+                delete_bc_Unit(unit);
+                worked = true;
+                break;
+            }   
+            if (mars.mars[x][y] || (mars.hasUnit[x][y] && mars.firstdir[x][y] != 8)) continue;
+            for (int l = 0; l < 8; l++) // consider going this direction
+            {
+                int i = x + bc_Direction_dx((bc_Direction)l);
+                int j = y + bc_Direction_dy((bc_Direction)l);
+                if (mars.seen[i][j] != mars.upto)
+                {
+                    mars.seen[i][j] = mars.upto;
+                    mars.robotthatlead[i][j] = mars.robotthatlead[x][y];
+                    if (mars.firstdir[x][y] == 8) mars.firstdir[i][j] = l;
+                    else mars.firstdir[i][j] = mars.firstdir[x][y];
+                    q.emplace(i, j);
+                }
+            }
+        }
+        if (!worked)
+        {
+            printf("rip...\n");
+            for (auto unit : canMove)
+            {
+                delete_bc_Unit(unit);
+            }
+            canMove.clear();
+        }
+        else printf("YAY IT WORKED\n");
+    }
 }
 int main() 
 {
@@ -299,7 +398,6 @@ int main()
             bc_GameController_next_turn(gc);
             continue;
         }
-
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
         for (int i = 0; i < myPlanetC; ++i)
         {
@@ -325,7 +423,6 @@ int main()
             }
         }
         delete_bc_MapLocation(loc);
-
         bc_VecUnit *units = bc_GameController_my_units(gc);
         int len = bc_VecUnit_len(units);
         for (int i = 0; i < len; i++) 
