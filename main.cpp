@@ -96,7 +96,8 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         upto++;
         for (int i = 0; i < r; i++)
         {
-            for (int j = 0; j < c; j++) { 
+            for (int j = 0; j < c; j++) 
+            { 
                 if (!mars[i][j]) findcomps(i, j, i*c+j);
             }
         }
@@ -142,19 +143,24 @@ struct EarthSTRUCT //contains a more readable map of earth
 };
 MarsSTRUCT mars;
 EarthSTRUCT earth;
-bool check_errors() {
-    if (bc_has_err()) {
+bool check_errors() 
+{
+    if (bc_has_err()) 
+    {
         char *err;
         /// Note: this clears the current global error.
         int8_t code = bc_get_last_err(&err);
         printf("Engine error code %d: %s\n", code, err);
         bc_free_string(err);
         return true;
-    } else {
+    } 
+    else 
+    {
         return false;
     }
 };
-int main() {
+int main() 
+{
     printf("Player C++ bot starting\n");
 
     srand(0);
@@ -171,7 +177,8 @@ int main() {
 
     bc_GameController *gc = new_bc_GameController();
 
-    if (check_errors()) {
+    if (check_errors()) 
+    {
         printf("Failed, dying.\n");
         exit(1);
     }
@@ -179,17 +186,25 @@ int main() {
     bc_Planet myPlanet = bc_GameController_planet(gc);
     mars.init(gc);
     earth.init(gc);
-    while (true) {
+    while (true) 
+    {
         uint32_t round = bc_GameController_round(gc);
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
             printf("%d\n", bc_GameController_queue_research(gc, Rocket));
         }
+        if (myPlanet == Mars)
+        {
+            printf("I'm controlling mars ... so I'm going to do nothing\n");
+            bc_GameController_next_turn(gc);
+            continue;
+        }
         bc_VecUnit *units = bc_GameController_my_units(gc);
         printf("Round %d\n", round);
         int len = bc_VecUnit_len(units);
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < len; i++) 
+        {
             bc_Unit *unit = bc_VecUnit_index(units, i);
             bc_Location* loc = bc_Unit_location(unit);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
@@ -219,10 +234,12 @@ int main() {
                     }
                     if (bc_Unit_structure_is_built(newUnit)) //If its built, lets go into it
                     {
-                        if (bc_GameController_can_load(gc, newid, id)) {
+                        if (bc_GameController_can_load(gc, newid, id)) 
+                        {
                             printf("Loaded\n");
                             bc_GameController_load(gc, newid, id);
-                        } else printf("CAN'T LOAD...RIP\n");
+                        } 
+                        else printf("CAN'T LOAD...RIP\n");
                         pair<int, int> landingLocPair = mars.optimalsquare();
                         printf("%d %d\n", landingLocPair.first, landingLocPair.second);
                         bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
