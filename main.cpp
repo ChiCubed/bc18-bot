@@ -452,6 +452,9 @@ int main()
 
     int nWorkers;
 
+    bc_Team currTeam = bc_GameController_team(gc);
+    bc_Team enemyTeam = (currTeam == Red ? Blue : Red);
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -486,7 +489,7 @@ int main()
                     
                     // if it's an enemy and a factory or rocket:
                     // take note
-                    if (bc_Unit_team(unit) != bc_GameController_team(gc))
+                    if (bc_Unit_team(unit) != currTeam)
                     {
                         if (unitType == Factory) enemyFactory[i][j] = 1;
                         if (unitType == Rocket) enemyRocket[i][j] = 1;
@@ -539,7 +542,7 @@ int main()
                         delete_bc_Location(factLoc);
                         delete_bc_MapLocation(factMapLoc);
                         delete_bc_MapLocation(mapLoc);
-                        continue;
+                        goto loopCleanup; // i'm sorry
                     }
 
                     // if factory is dead or finished:
@@ -600,6 +603,61 @@ int main()
                     delete_bc_MapLocation(mapLoc);
                 }
             }
+            // NOTE: this is some basic attacking strategy
+            // and is not by any means actually good.
+            else if (unitType == Factory)
+            {
+                // Let's build some stuff.
+                // Why not.
+                if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
+
+                if (bc_GameController_can_produce_robot(gc, id, Ranger))
+                {
+                    bc_GameController_produce_robot(gc, id, Ranger);
+                }
+
+                for (int j = 0; j < 8; ++j)
+                {
+                    if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
+                    {
+                        bc_GameController_unload(gc, id, (bc_Direction)j);
+                    }
+                }
+            }
+            else if (unitType == Ranger)
+            {
+                if (bc_GameController_is_move_ready(gc, id))
+                {
+                    for (int j = 0; j < 8; ++j)
+                    {
+                        if (bc_GameController_can_move(gc, id, (bc_Direction)j))
+                        {
+                            bc_GameController_move_robot(gc, id, (bc_Direction)j);
+                            break;
+                        }
+                    }
+                }
+
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                bc_VecUnit *nearbyEnemies = bc_GameController_sense_nearby_units_by_team(
+                    gc, mapLoc, bc_Unit_attack_range(unit), enemyTeam);
+                int len = bc_VecUnit_len(nearbyEnemies);
+                for (int j = 0; j < len; ++j) {
+                    bc_Unit *enemy = bc_VecUnit_index(nearbyEnemies, j);
+                    uint16_t enemyid = bc_Unit_id(enemy);
+                    delete_bc_Unit(enemy);
+
+                    if (bc_GameController_can_attack(gc, id, enemyid)) {
+                        bc_GameController_attack(gc, id, enemyid);
+                        break;
+                    }
+                }
+
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_VecUnit(nearbyEnemies);
+            }
+
+            loopCleanup:
             delete_bc_Unit(unit);
             delete_bc_Location(loc);
         }
