@@ -22,13 +22,13 @@ bool check_errors()
         return false;
     }
 };
-
 struct MarsSTRUCT //contains a more readable map of mars, as well as the code to find where to send a rocket
 {
-    int r, c;
+    int r, c, numberOfWorkers;
     int mars[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
     int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60];
+    bc_AsteroidPattern* asteroidPattern;
     void init(bc_GameController* gc)
     {
         bc_Planet bc_Planet_mars = Mars;
@@ -45,8 +45,25 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                 mars[i][j] = !bc_PlanetMap_is_passable_terrain_at(map, loc);
             }
         }
-        delete_bc_MapLocation(loc);
         delete_bc_PlanetMap(map);
+
+        // Add the first 100 rounds of asteriod strikes to the karbonite array
+        asteroidPattern = bc_GameMap_asteroids_get(new_bc_GameMap());
+        bc_AsteroidStrike* asteroidStrike;
+        for (int i = 1; i <= 100; i++)
+        {
+            if (bc_AsteroidPattern_has_asteroid(asteroidPattern, i))
+            {
+                asteroidStrike = bc_AsteroidPattern_asteroid(asteroidPattern, i);
+                loc = bc_AsteroidStrike_location_get(asteroidStrike);
+                int x = bc_MapLocation_x_get(loc);
+                int y = bc_MapLocation_y_get(loc);
+                printf("Asteroid strike! %d %d\n", x, y);
+                delete_bc_MapLocation(loc);
+                delete_bc_AsteroidStrike(asteroidStrike);
+            }
+        }
+
     }
     void findcomps(int x, int y, int k) // find components and their sizes
     {
@@ -138,6 +155,19 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         hasrocket[best.second.first][best.second.second] = true;
         return best.second;
     }   
+    void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
+    { // I think this only has karbonite within the viewable range ......... rip.....
+        bc_MapLocation* loc;
+        for (int i = 0; i < c; i++)
+        {
+            for (int j = 0; j < r; j++)
+            {
+                loc = new_bc_MapLocation(Mars, i, j);
+                karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+                delete_bc_MapLocation(loc);
+            }
+        }
+    }
 };
 struct EarthSTRUCT //contains a more readable map of earth
 {
@@ -172,6 +202,54 @@ EarthSTRUCT earth;
 
 bool enemyFactory[60][60], enemyRocket[60][60];
 
+void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbonite on mars
+{
+    mars.updateKarboniteAmount(gc);
+    bc_MapLocation* loc = new_bc_MapLocation(Mars, 0, 0);
+    bc_VecUnit *units = bc_GameController_my_units(gc); 
+    int len = bc_VecUnit_len(units);
+    for (int l = 0; l < len; l++) 
+    {
+        bc_Unit *unit = bc_VecUnit_index(units, l);
+        bc_UnitType unitType = bc_Unit_unit_type(unit);
+        uint16_t id = bc_Unit_id(unit);
+        if (unitType == Worker)
+        {
+            for (int i = 8; i >= 0; i--)
+            {
+                if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                {
+                    printf("harvesting\n");
+                    bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
+                    break; // we can only harvest 1 per turn :(
+                }
+            }
+        }
+        else if (unitType == Rocket) // unload
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                if (bc_GameController_can_unload(gc, id, (bc_Direction)i)) // try unloading in all directions
+                {
+                    printf("Unloading\n");
+                    bc_GameController_unload(gc, id, (bc_Direction)i);
+                    mars.numberOfWorkers++; // Currently the code assumes all things in rockets are workers.
+                }
+            }
+            /*bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
+            int len = bc_VecUnitID_len(garrisonUnits);
+            delete_bc_VecUnitID(garrisonUnits);
+            if (!len)
+            {
+                printf("Trying to disintegrate\n");
+                bc_GameController_disintegrate_unit(gc, id);
+            }
+            else printf("%d\n", len);*/
+        }   
+        delete_bc_Unit(unit);
+    }
+    delete_bc_MapLocation(loc);
+}
 int main() 
 {
     printf("Player C++ bot starting\n");
@@ -208,6 +286,7 @@ int main()
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
+        printf("Round %d\n", round);
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
@@ -215,7 +294,8 @@ int main()
         }
         if (myPlanet == Mars)
         {
-            printf("I'm controlling mars ... so I'm going to do nothing\n");
+            mineKarboniteOnMars(gc);
+            fflush(stdout);
             bc_GameController_next_turn(gc);
             continue;
         }
@@ -247,7 +327,6 @@ int main()
         delete_bc_MapLocation(loc);
 
         bc_VecUnit *units = bc_GameController_my_units(gc);
-        printf("Round %d\n", round);
         int len = bc_VecUnit_len(units);
         for (int i = 0; i < len; i++) 
         {
