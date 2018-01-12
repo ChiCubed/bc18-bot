@@ -6,6 +6,23 @@ using namespace std;
 #include <bc.h>
 #undef this
 
+bool check_errors() 
+{
+    if (bc_has_err()) 
+    {
+        char *err;
+        /// Note: this clears the current global error.
+        int8_t code = bc_get_last_err(&err);
+        printf("Engine error code %d: %s\n", code, err);
+        bc_free_string(err);
+        return true;
+    } 
+    else 
+    {
+        return false;
+    }
+};
+
 struct MarsSTRUCT //contains a more readable map of mars, as well as the code to find where to send a rocket
 {
     int r, c;
@@ -18,14 +35,18 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         bc_PlanetMap* map = bc_GameController_starting_map(gc, bc_Planet_mars);
         r = bc_PlanetMap_height_get(map);
         c = bc_PlanetMap_width_get(map);
-        for (int i = 0; i < r; i++)
+        bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_mars, 0, 0);
+        for (int i = 0; i < c; i++)
         {
-            for (int j = 0; j < c; j++)
+            for (int j = 0; j < r; j++)
             {
-                bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_mars, i, j);
+                bc_MapLocation_x_set(loc, i);
+                bc_MapLocation_y_set(loc, j);
                 mars[i][j] = !bc_PlanetMap_is_passable_terrain_at(map, loc);
             }
         }
+        delete_bc_MapLocation(loc);
+        delete_bc_PlanetMap(map);
     }
     void findcomps(int x, int y, int k) // find components and their sizes
     {
@@ -33,9 +54,9 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         seen[x][y] = upto;
         comp[x][y] = k;
         compsize[k]++;
-        for (int i = max(x-1, 0); i <= min(x+1, r-1); i++)
+        for (int i = max(x-1, 0); i <= min(x+1, c-1); i++)
         {
-            for (int j = max(y-1, 0); j <= min(y+1, c-1); j++)
+            for (int j = max(y-1, 0); j <= min(y+1, r-1); j++)
             {
                 if (!mars[i][j]) findcomps(i, j, k);
             }
@@ -58,9 +79,9 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             int d = dis[x][y];
             ans += karbonite[x][y];
             if (d == k) continue;
-            for (int i = max(x-1, 0); i <= min(x+1, r-1); i++)
+            for (int i = max(x-1, 0); i <= min(x+1, c-1); i++)
             {
-                for (int j = max(y-1, 0); j <= min(y+1, c-1); j++)
+                for (int j = max(y-1, 0); j <= min(y+1, r-1); j++)
                 {
                     if (seen[i][j] != upto && !mars[i][j])
                     {
@@ -76,9 +97,9 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     int numneighbours(int x, int y) // returns number of valid neighbours
     {
         int ans = -1;
-        for (int i = max(x-1, 0); i <= min(x+1, r-1); i++)
+        for (int i = max(x-1, 0); i <= min(x+1, c-1); i++)
         {
-            for (int j = max(y-1, 0); j <= min(y+1, c-1); j++)
+            for (int j = max(y-1, 0); j <= min(y+1, r-1); j++)
             {
                 if (!mars[i][j]) ans++;
             }
@@ -94,17 +115,17 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         // A (and possibly also B/C) could be dependent on total available karbonite/average comp size/whatever
         int K = 5; //dist to consider for karbonite
         upto++;
-        for (int i = 0; i < r; i++)
+        for (int i = 0; i < c; i++)
         {
-            for (int j = 0; j < c; j++) 
+            for (int j = 0; j < r; j++) 
             { 
                 if (!mars[i][j]) findcomps(i, j, i*c+j);
             }
         }
         pair<pair<int, int>, pair<int, int> > best = mp(mp(0, 0), mp(0, 0));
-        for (int i = 0; i < r; i++)
+        for (int i = 0; i < c; i++)
         {
-            for (int j = 0; j < c; j++)
+            for (int j = 0; j < r; j++)
             {   
                 if (mars[i][j] || hasrocket[i][j]) continue;
                 int nearbykar = bfs(i, j, K);
@@ -129,36 +150,28 @@ struct EarthSTRUCT //contains a more readable map of earth
         bc_PlanetMap* map = bc_GameController_starting_map(gc, bc_Planet_earth);
         r = bc_PlanetMap_height_get(map);
         c = bc_PlanetMap_width_get(map);
-        for (int i = 0; i < r; i++)
+        bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_earth, 0, 0);
+        for (int i = 0; i < c; i++)
         {
-            for (int j = 0; j < c; j++)
+            for (int j = 0; j < r; j++)
             {
-                bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_earth, i, j);
+                bc_MapLocation_x_set(loc, i);
+                bc_MapLocation_y_set(loc, j);
                 earth[i][j] = !bc_PlanetMap_is_passable_terrain_at(map, loc);
                // printf("%d ", earth[i][j]);
             }
           //  printf("\n");
         }
+        delete_bc_MapLocation(loc);
+        delete_bc_PlanetMap(map);
     }
 };
+
 MarsSTRUCT mars;
 EarthSTRUCT earth;
-bool check_errors() 
-{
-    if (bc_has_err()) 
-    {
-        char *err;
-        /// Note: this clears the current global error.
-        int8_t code = bc_get_last_err(&err);
-        printf("Engine error code %d: %s\n", code, err);
-        bc_free_string(err);
-        return true;
-    } 
-    else 
-    {
-        return false;
-    }
-};
+
+bool enemyFactory[60][60], enemyRocket[60][60];
+
 int main() 
 {
     printf("Player C++ bot starting\n");
@@ -186,6 +199,12 @@ int main()
     bc_Planet myPlanet = bc_GameController_planet(gc);
     mars.init(gc);
     earth.init(gc);
+
+    bc_PlanetMap* map = bc_GameController_starting_map(gc, myPlanet);
+    int myPlanetR = bc_PlanetMap_height_get(map);
+    int myPlanetC = bc_PlanetMap_width_get(map);
+    delete_bc_PlanetMap(map);
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -200,6 +219,33 @@ int main()
             bc_GameController_next_turn(gc);
             continue;
         }
+
+        bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
+        for (int i = 0; i < myPlanetC; ++i)
+        {
+            for (int j = 0; j < myPlanetR; ++j)
+            {
+                // detect an enemy factory here
+                bc_MapLocation_x_set(loc, i);
+                bc_MapLocation_y_set(loc, j);
+
+                if (bc_GameController_has_unit_at_location(gc, loc)) {
+                    bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
+                    bc_UnitType unitType = bc_Unit_unit_type(unit);
+                    
+                    // if it's an enemy and a factory or rocket:
+                    // take note
+                    if (bc_Unit_team(unit) != bc_GameController_team(gc)) {
+                        if (unitType == Factory) enemyFactory[i][j] = 1;
+                        if (unitType == Rocket) enemyRocket[i][j] = 1;
+                    }
+
+                    delete_bc_Unit(unit);
+                }
+            }
+        }
+        delete_bc_MapLocation(loc);
+
         bc_VecUnit *units = bc_GameController_my_units(gc);
         printf("Round %d\n", round);
         int len = bc_VecUnit_len(units);
@@ -249,11 +295,14 @@ int main()
                             bc_GameController_launch_rocket(gc, newid, landingLoc);
                         }
                         else printf("Launch FAILED\n");
+                        delete_bc_MapLocation(landingLoc);
                     }
                     delete_bc_Unit(newUnit);
                 }
+                delete_bc_MapLocation(mapLoc);
             }
             delete_bc_Unit(unit);
+            delete_bc_Location(loc);
         }
         delete_bc_VecUnit(units);
 
