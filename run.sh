@@ -15,12 +15,12 @@ else
 	exit 1
 fi
 
-echo "$ gcc extra.c -c -O -g $INCLUDES"
-gcc extra.c -c -O -g $INCLUDES
-echo "$ gcc main.cpp -c -O -g $INCLUDES"
+echo "$ g++ -std=c++11 extra.c -c -O -g $INCLUDES"
+g++ -std=c++11 extra.c -c -O -g $INCLUDES
+echo "$ g++ -std=c++11 main.cpp -c -O -g $INCLUDES"
 g++ main.cpp -std=c++11 -c -O -g $INCLUDES
-echo "$ gcc main.o extra.o -o main $LIBRARIES"
-gcc main.o extra.o -o main $LIBRARIES
+echo "$ g++ -std=c++11 main.o extra.o -o main $LIBRARIES"
+g++ -std=c++11 main.o extra.o -o main $LIBRARIES
 
 # run the program!
 ./main
