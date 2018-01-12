@@ -176,7 +176,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                 loc = new_bc_MapLocation(Mars, i, j);
                 karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
             //    if (karbonite[i][j]) printf("at %d %d\n", i, j);
-          //      if (bc_GameController_has_unit_at_location(gc, loc)) hasUnit[i][j] = 1;
+         	 //   if (bc_GameController_has_unit_at_location(gc, loc)) { hasUnit[i][j] = 1; printf("helllo\n"); }
             //    else hasUnit[i][j] = 0;
                 hasUnit[i][j] = 0;
                 delete_bc_MapLocation(loc);
@@ -320,7 +320,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                     mars.numberOfWorkers++; // Currently the code assumes all things in rockets are workers.
                 }
             }
-            /*bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
+            bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
             int len = bc_VecUnitID_len(garrisonUnits);
             delete_bc_VecUnitID(garrisonUnits);
             if (!len)
@@ -328,7 +328,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                 printf("Trying to disintegrate\n");
                 bc_GameController_disintegrate_unit(gc, id);
             }
-            else printf("%d\n", len);*/
+            else printf("%d\n", len);
             delete_bc_Unit(unit);
         }   
     }
