@@ -28,6 +28,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     int mars[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
     int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
+    int rocketsInComp[3000], mnInAComp;
     set<pair<int, int> > taken;
     bc_AsteroidPattern* asteroidPattern;
     void init(bc_GameController* gc)
@@ -76,7 +77,10 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         {
             for (int j = max(y-1, 0); j <= min(y+1, r-1); j++)
             {
-                if (!mars[i][j]) findcomps(i, j, k);
+                if (!mars[i][j]) 
+                { 
+                	findcomps(i, j, k);
+                }
             }
         }
     }
@@ -96,12 +100,12 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             s++;
             int d = dis[x][y];
             ans += karbonite[x][y];
-            if (d == k) continue;
+            if (d == k || !mars[x][y]) continue;
             for (int i = max(x-1, 0); i <= min(x+1, c-1); i++)
             {
                 for (int j = max(y-1, 0); j <= min(y+1, r-1); j++)
                 {
-                    if (seen[i][j] != upto && !mars[i][j])
+                    if (seen[i][j] != upto)
                     {
                         seen[i][j] = upto;
                         dis[i][j] = d+1;
@@ -133,11 +137,16 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         // A (and possibly also B/C) could be dependent on total available karbonite/average comp size/whatever
         int K = 5; //dist to consider for karbonite
         upto++;
+        mnInAComp = 999999999;
         for (int i = 0; i < c; i++)
         {
             for (int j = 0; j < r; j++) 
             { 
-                if (!mars[i][j]) findcomps(i, j, i*c+j);
+                if (!mars[i][j]) 
+                {
+                	findcomps(i, j, i*c+j);
+                	mnInAComp = min(mnInAComp, rocketsInComp[i*c+j]);
+                }
             }
         }
         pair<pair<int, int>, pair<int, int> > best = mp(mp(0, 0), mp(0, 0));
@@ -145,7 +154,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         {
             for (int j = 0; j < r; j++)
             {   
-                if (mars[i][j] || hasrocket[i][j]) continue;
+                if (mars[i][j] || hasrocket[i][j] || rocketsInComp[comp[i][j]] != mnInAComp) continue;
                 int nearbykar = bfs(i, j, K);
                 int compsz = compsize[comp[i][j]];
                 int numnei = numneighbours(i, j);
@@ -154,6 +163,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             }
         }
         hasrocket[best.second.first][best.second.second] = true;
+        rocketsInComp[comp[best.second.first][best.second.second]]++;
         return best.second;
     }   
     void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
@@ -346,7 +356,6 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
             }
             canMove.clear();
         }
-        else printf("YAY IT WORKED\n");
     }
 }
 int main() 
@@ -462,6 +471,7 @@ int main()
                             bc_GameController_load(gc, newid, id);
                         } 
                         else printf("CAN'T LOAD...RIP\n");
+                        mars.updateKarboniteAmount(gc);
                         pair<int, int> landingLocPair = mars.optimalsquare();
                         printf("%d %d\n", landingLocPair.first, landingLocPair.second);
                         bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
