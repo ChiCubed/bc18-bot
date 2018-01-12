@@ -247,7 +247,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                     break; // we can only harvest 1 per turn :(
                 }
             }
-            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit);
+            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
             else delete_bc_Unit(unit);
         }
         else if (unitType == Rocket) // unload
@@ -297,7 +297,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
             int x = q.front().first;
             int y = q.front().second;
           //  if (x == 12 && y == 10) printf("YAYAYAY\n");
-            printf("%d %d\n", x, y);
+         //   printf("%d %d\n", x, y);
             q.pop();
             if (mars.karbonite[x][y] && mars.taken.find(make_pair(x, y)) == mars.taken.end())
             {
@@ -337,7 +337,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
             {
                 int i = x + bc_Direction_dx((bc_Direction)l);
                 int j = y + bc_Direction_dy((bc_Direction)l);
-                if (mars.seen[i][j] != mars.upto)
+                if (i >= 0 && i < mars.c && j >= 0 && j < mars.r && mars.seen[i][j] != mars.upto)
                 {
                     mars.seen[i][j] = mars.upto;
                     mars.robotthatlead[i][j] = mars.robotthatlead[x][y];
