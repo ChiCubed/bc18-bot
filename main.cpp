@@ -747,9 +747,10 @@ int main()
                 // Why not.
                 if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
 
-                if (bc_GameController_can_produce_robot(gc, id, Knight))
+                bc_UnitType type = (rand() % 4 ? Knight : Mage);
+                if (bc_GameController_can_produce_robot(gc, id, type))
                 {
-                    bc_GameController_produce_robot(gc, id, Knight);
+                    bc_GameController_produce_robot(gc, id, type);
                 }
 
                 for (int j = 0; j < 8; ++j)
@@ -857,6 +858,121 @@ int main()
 
                 delete_bc_MapLocation(mapLoc);
                 if (nearestEnemy) delete_bc_MapLocation(nearestEnemy);
+            }
+            // TODO:
+            // We need some way of making sure that our
+            // units don't prevent factories from being able
+            // to unload.
+            // Also mages don't care about friendly fire.
+            else if (unitType == Mage)
+            {
+                // if we are in a garrison or space:
+                // wow, not much you can do now
+                if (bc_Location_is_in_garrison(loc) ||
+                    bc_Location_is_in_space(loc)) goto loopCleanup;
+
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                bc_MapLocation *nearestRanger, *nearestOverall;
+                bc_Direction dir;
+
+                // check if there's a ranger nearby (rip)
+                // note that we check slightly outside our vision range
+                // because someone else might see a ranger
+                tie(nearestRanger, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, true, Ranger);
+
+                tie(nearestOverall, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, false);
+
+                // Check if the nearby ranger's squared distance
+                // is at most 3 times the distance of the nearest unit overall
+                // otherwise we might have higher priorities
+
+                if (nearestRanger &&
+                    bc_MapLocation_distance_squared_to(mapLoc, nearestRanger) <=
+                    3 * bc_MapLocation_distance_squared_to(mapLoc, nearestOverall))
+                {
+                    // RUN AWAY
+                    // Choose the direction that maximises our distance
+                    // from the ranger
+                    if (bc_GameController_is_move_ready(gc, id))
+                    {
+                        bc_Direction bestDir = North; int maxDist = -1;
+                        for (int d = 0; d < 8; ++d)
+                        {
+                            bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)d);
+
+                            int newDist = bc_MapLocation_distance_squared_to(newLoc, nearestRanger);
+                            if (newDist > maxDist &&
+                                bc_GameController_can_move(gc, id, (bc_Direction)d))
+                            {
+                                bestDir = (bc_Direction)d;
+                                maxDist = newDist;
+                            }
+
+                            delete_bc_MapLocation(newLoc);
+                        }
+                        if (bc_GameController_can_move(gc, id, bestDir))
+                        {
+                            bc_GameController_move_robot(gc, id, bestDir);
+                        }
+                    }
+
+                    // attack!!
+                    bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, nearestRanger);
+                    uint16_t enemyid = bc_Unit_id(enemy);
+                    if (bc_GameController_can_attack(gc, id, enemyid) &&
+                        bc_GameController_is_attack_ready(gc, id))
+                    {
+                        bc_GameController_attack(gc, id, enemyid);
+                    }
+
+                    delete_bc_Unit(enemy);
+                }
+
+                // Try to shoot at the nearest overall enemy now.
+                // This also occurs if we were unable to attack
+                // a ranger that we're running away from.
+                if (nearestOverall)
+                {
+                    bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, nearestOverall);
+                    uint16_t enemyid = bc_Unit_id(enemy);
+                    if (bc_GameController_can_attack(gc, id, enemyid) &&
+                        bc_GameController_is_attack_ready(gc, id))
+                    {
+                        bc_GameController_attack(gc, id, enemyid);
+                    }
+
+                    delete_bc_Unit(enemy);
+                }
+                else
+                {
+                    // nobody nearby.
+                    // let's move randomly
+                    vector<int> availableDir;
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        if (bc_GameController_can_move(gc, id, (bc_Direction)i))
+                        {
+                            availableDir.push_back(i);
+                        }
+                    }
+                    if (availableDir.size())
+                    {
+                        dir = (bc_Direction)availableDir[rand() % availableDir.size()];
+                    }
+                    else
+                    {
+                        dir = North; // we can't do anything
+                    }
+                    if (bc_GameController_can_move(gc, id, dir) &&
+                        bc_GameController_is_move_ready(gc, id))
+                    {
+                        bc_GameController_move_robot(gc, id, dir);
+                    }
+                }
+
+                delete_bc_MapLocation(mapLoc);
+                if (nearestRanger) delete_bc_MapLocation(nearestRanger);
+                if (nearestOverall) delete_bc_MapLocation(nearestOverall);
             }
 
             loopCleanup:
