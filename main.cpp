@@ -679,6 +679,9 @@ int main()
                     }
 
                     // if structure is dead or finished:
+                    // structure no longer needs units assigned
+                    reqAssignees[assignedStructure[id]] = 0;
+
                     // this unit no longer has an assigned structure
                     assignedStructure.erase(id);
 
@@ -800,14 +803,26 @@ int main()
                     if (dir == Northeast || dir == Southeast ||
                         dir == Southwest || dir == Northwest)
                     {
-                        // subtract 1 from dir:
-                        // this'll get us to a position
-                        // where we're adjacent to the enemy
-                        dir = (bc_Direction)((int)dir - 1);
-                        if (bc_GameController_can_move(gc, id, dir) &&
-                            bc_GameController_is_move_ready(gc, id))
+                        if (bc_GameController_is_move_ready(gc, id))
                         {
-                            bc_GameController_move_robot(gc, id, dir);
+                            // subtract 1 from dir:
+                            // this'll get us to a position
+                            // where we're adjacent to the enemy
+                            dir = (bc_Direction)((int)dir - 1);
+                            if (bc_GameController_can_move(gc, id, dir))
+                            {
+                                bc_GameController_move_robot(gc, id, dir);
+                            }
+                            else
+                            {
+                                // try the other direction corresponding
+                                // to the same diagonal
+                                dir = (bc_Direction)(((int)dir + 2) % 8);
+                                if (bc_GameController_can_move(gc, id, dir))
+                                {
+                                    bc_GameController_move_robot(gc, id, dir);
+                                }
+                            }
                         }
                     }
                 }
