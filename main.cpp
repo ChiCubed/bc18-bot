@@ -451,11 +451,109 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
         }
     }
 }
+
+// returns: [the nearest location, the direction to go to get to the enemy]
+pair<bc_MapLocation*, bc_Direction> findNearestEnemy(bc_GameController* gc, bc_Team currTeam, bc_PlanetMap* currPlanet,
+            bc_MapLocation* mapLoc, int range, bool targetByType, bc_UnitType targetType = Worker) {
+    bool seenLoc[60][60];
+    bc_Direction prev[60][60];
+    for (int i = 0; i < 60; ++i) for (int j = 0; j < 60; ++j)
+    {
+        seenLoc[i][j] = 0;
+        prev[i][j] = Center;
+    }
+
+    int ox = bc_MapLocation_x_get(mapLoc), oy = bc_MapLocation_y_get(mapLoc);
+    seenLoc[ox][oy] = 1;
+    queue<bc_MapLocation*> Q;
+
+    //printf("Searching for nearby enemies...\n");
+
+    Q.push(bc_MapLocation_clone(mapLoc));
+    while (Q.size())
+    {
+        bc_MapLocation* currLoc = Q.front(); Q.pop();
+
+        if (!bc_PlanetMap_is_passable_terrain_at(currPlanet, currLoc) ||
+            !bc_MapLocation_is_within_range(currLoc, range, mapLoc))
+        {
+            delete_bc_MapLocation(currLoc);
+
+            continue;
+        }
+
+        int x = bc_MapLocation_x_get(currLoc), y = bc_MapLocation_y_get(currLoc);
+
+        for (int i = 0; i < 8; ++i)
+        {
+            bc_Direction dir = (bc_Direction)i;
+            int nx = x + bc_Direction_dx(dir), ny = y + bc_Direction_dy(dir);
+
+            if (nx < 0 || nx >= bc_PlanetMap_width_get(currPlanet) ||
+                ny < 0 || ny >= bc_PlanetMap_height_get(currPlanet) ||
+                seenLoc[nx][ny])
+            {
+                continue;
+            }
+
+            seenLoc[nx][ny] = 1;
+            prev[nx][ny] = dir;
+
+            Q.push(bc_MapLocation_add(currLoc, dir));
+
+            // DON'T DELETE IT HERE:
+            // We need it later in the BFS
+        }
+
+        // TODO: another thing for
+        // has_unit_at_location... maybe?
+        bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, currLoc);
+        if (!unit)
+        {
+            delete_bc_MapLocation(currLoc);
+
+            continue;
+        }
+
+        bc_Team team = bc_Unit_team(unit);
+        bc_UnitType type = bc_Unit_unit_type(unit);
+
+        if (team != currTeam && (!targetByType || type == targetType)) 
+        {
+            delete_bc_Unit(unit);
+
+            // Walk backwards in the prev array
+            // to determine the optimal move from
+            // mapLoc.
+            bc_Direction dir;
+            while (x ^ ox || y ^ oy) {
+                dir = prev[x][y];
+                // subtract - take the opposite direction
+                x -= bc_Direction_dx(dir);
+                y -= bc_Direction_dy(dir);
+            }
+
+            // Get rid of all other locations - prevent mem leaks
+            while (Q.size()) {
+                bc_MapLocation* cml = Q.front(); Q.pop();
+                delete_bc_MapLocation(cml);
+            }
+
+            return {currLoc, dir};
+        }
+
+        delete_bc_MapLocation(currLoc);
+        delete_bc_Unit(unit);
+    }
+
+    return {0, Center};
+}
+
 int main() 
 {
     printf("Player C++ bot starting\n");
 
-    srand(0);
+    srand(420);
 
     bc_Direction dir = North;
     bc_Direction opposite = bc_Direction_opposite(dir);
@@ -485,7 +583,6 @@ int main()
     bc_PlanetMap* map = bc_GameController_starting_map(gc, myPlanet);
     int myPlanetR = bc_PlanetMap_height_get(map);
     int myPlanetC = bc_PlanetMap_width_get(map);
-    delete_bc_PlanetMap(map);
 
     int nWorkers;
 
@@ -547,9 +644,13 @@ int main()
         for (int i = 0; i < len; i++) 
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
+            bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-            bc_UnitType unitType = bc_Unit_unit_type(unit);
+
+            // if this unit has died during this turn
+            if (!unit) goto loopCleanup;
+
             if (unitType == Worker)
             {
                 if (assignedStructure.find(id) != assignedStructure.end() &&
@@ -587,8 +688,10 @@ int main()
 
                 // Build a structure next to us
                 // (test code)
-                if (round == 30) createBlueprint(gc, unit, id, 3, East, Factory);
-                if (round == 150 || round == 250) createBlueprint(gc, unit, id, 1, North, Rocket);
+                if (round == 1) createBlueprint(gc, unit, id, 3, East, Factory);
+
+                // Don't spawn rockets yet
+                // if (round == 150 || round == 250) createBlueprint(gc, unit, id, 1, North, Rocket);
                 
                 // Let's try and get into an adjacent rocket.
                 // (Again, test code.)
@@ -634,17 +737,16 @@ int main()
                 else printf("Launch FAILED\n");
                 delete_bc_MapLocation(landingLoc);
             }
-            // NOTE: this is some basic attacking strategy
-            // and is not by any means actually good.
+            // For now we just spawn Knights.
             else if (unitType == Factory)
             {
                 // Let's build some stuff.
                 // Why not.
                 if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
 
-                if (bc_GameController_can_produce_robot(gc, id, Ranger))
+                if (bc_GameController_can_produce_robot(gc, id, Knight))
                 {
-                    bc_GameController_produce_robot(gc, id, Ranger);
+                    bc_GameController_produce_robot(gc, id, Knight);
                 }
 
                 for (int j = 0; j < 8; ++j)
@@ -655,42 +757,99 @@ int main()
                     }
                 }
             }
-            else if (unitType == Ranger)
+            else if (unitType == Knight)
             {
-                if (bc_GameController_is_move_ready(gc, id))
+                // if we are in a garrison or space:
+                // wow, not much you can do now
+                if (bc_Location_is_in_garrison(loc) ||
+                    bc_Location_is_in_space(loc)) goto loopCleanup;
+
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                bc_MapLocation* nearestEnemy;
+                bc_Direction dir;
+                tie(nearestEnemy, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, false);
+
+                if (!nearestEnemy)
                 {
-                    for (int j = 0; j < 8; ++j)
+                    // Let's move in a random direction
+                    // (that we can move in) for now.
+                    vector<int> availableDir;
+                    for (int i = 0; i < 8; ++i)
                     {
-                        if (bc_GameController_can_move(gc, id, (bc_Direction)j))
+                        if (bc_GameController_can_move(gc, id, (bc_Direction)i))
                         {
-                            bc_GameController_move_robot(gc, id, (bc_Direction)j);
-                            break;
+                            availableDir.push_back(i);
+                        }
+                    }
+                    if (availableDir.size())
+                    {
+                        dir = (bc_Direction)availableDir[rand() % availableDir.size()];
+                    }
+                    else
+                    {
+                        dir = North; // we can't do anything
+                    }
+                }
+
+                if (nearestEnemy && bc_MapLocation_is_adjacent_to(mapLoc, nearestEnemy))
+                {
+                    // The knight is adjacent to the nearest enemy.
+                    // If it's diagonally adjacent,
+                    // we'll move in such a way as to make it
+                    // vertically or horizontally adjacent.
+                    if (dir == Northeast || dir == Southeast ||
+                        dir == Southwest || dir == Northwest)
+                    {
+                        // subtract 1 from dir:
+                        // this'll get us to a position
+                        // where we're adjacent to the enemy
+                        dir = (bc_Direction)((int)dir - 1);
+                        if (bc_GameController_can_move(gc, id, dir) &&
+                            bc_GameController_is_move_ready(gc, id))
+                        {
+                            bc_GameController_move_robot(gc, id, dir);
                         }
                     }
                 }
-
-                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-                bc_VecUnit *nearbyEnemies = bc_GameController_sense_nearby_units_by_team(
-                    gc, mapLoc, bc_Unit_attack_range(unit), enemyTeam);
-                int len = bc_VecUnit_len(nearbyEnemies);
-                for (int j = 0; j < len; ++j) {
-                    bc_Unit *enemy = bc_VecUnit_index(nearbyEnemies, j);
-                    uint16_t enemyid = bc_Unit_id(enemy);
-                    delete_bc_Unit(enemy);
-
-                    if (bc_GameController_can_attack(gc, id, enemyid)) {
-                        bc_GameController_attack(gc, id, enemyid);
-                        break;
+                else
+                {
+                    if (bc_GameController_can_move(gc, id, dir) &&
+                        bc_GameController_is_move_ready(gc, id))
+                    {
+                        bc_GameController_move_robot(gc, id, dir);
                     }
                 }
 
+                // if we can attack the nearest enemy:
+                // do it
+                // (note: for other units than Knight,
+                //  the nearest enemy might not actually be
+                //  the nearest enemy, so you'll have to handle,
+                //  for instance, attacking other enemies
+                //  that get in the way)
+                if (nearestEnemy)
+                {
+                    bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, nearestEnemy);
+                    uint16_t enemyid = bc_Unit_id(enemy);
+                    if (bc_GameController_can_attack(gc, id, enemyid) &&
+                        bc_GameController_is_attack_ready(gc, id))
+                    {
+                        bc_GameController_attack(gc, id, enemyid);
+                    }
+
+                    delete_bc_Unit(enemy);
+                }
+
                 delete_bc_MapLocation(mapLoc);
-                delete_bc_VecUnit(nearbyEnemies);
+                if (nearestEnemy) delete_bc_MapLocation(nearestEnemy);
             }
 
             loopCleanup:
-            delete_bc_Unit(unit);
-            delete_bc_Location(loc);
+            if (unit)
+            {
+                delete_bc_Unit(unit);
+                delete_bc_Location(loc);
+            }
         }
 
         // For each structure which doesn't have enough workers:
@@ -764,5 +923,6 @@ int main()
         bc_GameController_next_turn(gc);
     }
 
+    delete_bc_PlanetMap(map);
     delete_bc_GameController(gc);
 }
