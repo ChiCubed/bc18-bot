@@ -218,28 +218,33 @@ MarsSTRUCT mars;
 EarthSTRUCT earth;
 
 bool enemyFactory[60][60], enemyRocket[60][60];
-// which factory a unit is assigned to
-unordered_map<uint16_t, uint16_t> assignedFactory;
-// a bitmask of directions
-// which a rocket currently has assigned
-unordered_map<uint16_t, char> dirAssigned;
-// how many workers a factory should have
+// which rocket / factory a unit is assigned to
+unordered_map<uint16_t, uint16_t> assignedStructure;
+// which directions are assigned for a structure
+unordered_map<uint16_t, int> dirAssigned;
+// how many workers a rocket / factory should have
 unordered_map<uint16_t, int> reqAssignees;
 
 // returns true if successful
-bool blueprintFactory(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, int num, bc_Direction dir) {
+bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, int num, bc_Direction dir, bc_UnitType type) {
+    if (type != Factory && type != Rocket)
+    {
+        printf("Tried to blueprint invalid unit type.\n");
+        return false;
+    }
+
     bc_Location *loc = bc_Unit_location(mainWorker);
     bc_MapLocation *mapLoc = bc_Location_map_location(loc);
     bc_MapLocation *newLoc = bc_MapLocation_add(mapLoc, dir);
 
-    printf("blueprinting factory at: %d %d\n", bc_MapLocation_x_get(newLoc), bc_MapLocation_y_get(newLoc));
+    printf("blueprinting at: %d %d\n", bc_MapLocation_x_get(newLoc), bc_MapLocation_y_get(newLoc));
 
     // TODO: This is a really really really bad workaround
     // because has_unit_at_location is rip.
     bc_Unit *tmp = bc_GameController_sense_unit_at_location(gc, newLoc);
     if (tmp)
     {
-        printf("Tried to build a factory on a unit.\n");
+        printf("Tried to build on a unit.\n");
 
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
@@ -248,34 +253,32 @@ bool blueprintFactory(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, i
         return false;
     }
 
-    if (bc_GameController_can_blueprint(gc, id, Factory, dir) &&
-        bc_UnitType_blueprint_cost(Factory) <= bc_GameController_karbonite(gc))
+    if (bc_GameController_can_blueprint(gc, id, type, dir) &&
+        bc_UnitType_blueprint_cost(type) <= bc_GameController_karbonite(gc))
     {
-        printf("Blueprinting factory...\n");
-        bc_GameController_blueprint(gc, id, Factory, dir);
+        printf("Blueprinting...\n");
+        bc_GameController_blueprint(gc, id, type, dir);
 
-        // figure out the id of the newly blueprinted factory
-        bc_Unit *fact = bc_GameController_sense_unit_at_location(gc, newLoc);
-        uint16_t factid = bc_Unit_id(fact);
+        // figure out the id of the newly blueprinted factory / rocket
+        bc_Unit *structure = bc_GameController_sense_unit_at_location(gc, newLoc);
+        uint16_t structureid = bc_Unit_id(structure);
 
-        assignedFactory[id] = factid;
-        reqAssignees[factid] = num;
+        assignedStructure[id] = structureid;
+        reqAssignees[structureid] = num;
 
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
         delete_bc_MapLocation(newLoc);
-        delete_bc_Unit(fact);
+        delete_bc_Unit(structure);
         return true;
     }
-    else
-    {
-        printf("Failed to blueprint factory\n");
 
-        delete_bc_Location(loc);
-        delete_bc_MapLocation(mapLoc);
-        delete_bc_MapLocation(newLoc);
-        return false;
-    }
+    printf("Failed to blueprint\n");
+
+    delete_bc_Location(loc);
+    delete_bc_MapLocation(mapLoc);
+    delete_bc_MapLocation(newLoc);
+    return false;
 }
 
 void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbonite on mars
@@ -549,93 +552,87 @@ int main()
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             if (unitType == Worker)
             {
-                if (assignedFactory.find(id) != assignedFactory.end() &&
+                if (assignedStructure.find(id) != assignedStructure.end() &&
                     bc_Location_is_on_map(loc))
                 {
                     bc_MapLocation* mapLoc = bc_Location_map_location(loc);
 
-                    uint16_t factid = assignedFactory[id];
-                    bc_Unit *fact = bc_GameController_unit(gc, factid);
+                    uint16_t structureid = assignedStructure[id];
+                    bc_Unit *structure = bc_GameController_unit(gc, structureid);
 
-                    if (fact && !bc_Unit_structure_is_built(fact)) {
-                        if (dirAssigned.find(factid) == dirAssigned.end()) dirAssigned[factid] = 0;
+                    if (structure && !bc_Unit_structure_is_built(structure))
+                    {
+                        if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
 
-                        // get direction of the assigned factory
-                        bc_Location *factLoc = bc_Unit_location(fact);
-                        bc_MapLocation *factMapLoc = bc_Location_map_location(factLoc);
-
-                        // build the factory if we can
-                        if (bc_GameController_can_build(gc, id, factid))
+                        // build the structure if we can
+                        if (bc_GameController_can_build(gc, id, structureid))
                         {
-                            bc_GameController_build(gc, id, factid);
+                            bc_GameController_build(gc, id, structureid);
                         }
 
-                        dirAssigned[factid] |= (1 << (int)bc_MapLocation_direction_to(factMapLoc, mapLoc));
+                        dirAssigned[structureid]++;
 
-                        delete_bc_Unit(fact);
-                        delete_bc_Location(factLoc);
-                        delete_bc_MapLocation(factMapLoc);
+                        delete_bc_Unit(structure);
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
 
-                    // if factory is dead or finished:
-                    // this unit no longer has an assigned factory
-                    assignedFactory.erase(id);
+                    // if structure is dead or finished:
+                    // this unit no longer has an assigned structure
+                    assignedStructure.erase(id);
 
-                    delete_bc_Unit(fact);
-                }
-
-                // Build a factory next to us
-                // (test code)
-                if (round == 30) blueprintFactory(gc, unit, id, 3, East);
-
-                if (bc_Location_is_on_map(loc))
-                {
-                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-                    int x = bc_MapLocation_x_get(mapLoc);
-                    int y = bc_MapLocation_y_get(mapLoc);
-                    if (bc_GameController_can_blueprint(gc, id, Rocket, North)) //If I can blueprint a rocket north of me, do it
-                    {
-                        printf("Blueprinting rocket...\n");
-                        bc_GameController_blueprint(gc, id, Rocket, North);
-                    }
-                    for (int j = 0; j < len; j++)
-                    {
-                        bc_Unit *newUnit = bc_VecUnit_index(units, j);
-                        uint16_t newid = bc_Unit_id(newUnit);
-                        bc_UnitType newUnitType = bc_Unit_unit_type(newUnit);
-                        if (newUnitType != Rocket) continue; //If the current unit is a rocket adj to me
-                        if (!bc_Location_is_adjacent_to(loc, bc_Unit_location(newUnit))) continue;
-                        if (bc_GameController_can_build(gc, id, newid)) //Try to build it
-                        {
-                            printf("Building...\n");
-                            bc_GameController_build(gc, id, newid);
-                        }
-                        if (bc_Unit_structure_is_built(newUnit)) //If its built, lets go into it
-                        {
-                            if (bc_GameController_can_load(gc, newid, id)) 
-                            {
-                                printf("Loaded\n");
-                                bc_GameController_load(gc, newid, id);
-                            } 
-                            else printf("CAN'T LOAD...RIP\n");
-                            mars.updateKarboniteAmount(gc);
-                            pair<int, int> landingLocPair = mars.optimalsquare();
-                            printf("%d %d\n", landingLocPair.first, landingLocPair.second);
-                            bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
-                            if (bc_GameController_can_launch_rocket(gc, newid, landingLoc)) //and now lets take off
-                            {
-                                printf("Launching...\n");
-                                bc_GameController_launch_rocket(gc, newid, landingLoc);
-                            }
-                            else printf("Launch FAILED\n");
-                            delete_bc_MapLocation(landingLoc);
-                        }
-                        delete_bc_Unit(newUnit);
-                    }
+                    delete_bc_Unit(structure);
                     delete_bc_MapLocation(mapLoc);
                 }
+
+                // Build a structure next to us
+                // (test code)
+                if (round == 30) createBlueprint(gc, unit, id, 3, East, Factory);
+                if (round == 150 || round == 250) createBlueprint(gc, unit, id, 1, North, Rocket);
+                
+                // Let's try and get into an adjacent rocket.
+                // (Again, test code.)
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                bc_VecUnit* adjRockets = bc_GameController_sense_nearby_units_by_type(gc, mapLoc, 2, Rocket);
+                int len = bc_VecUnit_len(adjRockets);
+                for (int j = 0; j < len; ++j)
+                {
+                    bc_Unit* rocket = bc_VecUnit_index(adjRockets, j);
+                    uint16_t rocketid = bc_Unit_id(rocket);
+                    if (bc_Unit_team(rocket) == currTeam &&
+                        bc_GameController_can_load(gc, rocketid, id))
+                    {
+                        printf("Loading into a random rocket...\n");
+                        bc_GameController_load(gc, rocketid, id);
+
+                        delete_bc_Unit(rocket);
+                        break;
+                    }
+
+                    delete_bc_Unit(rocket);
+                }
+
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_VecUnit(adjRockets);
+            }
+            // Rocket launch code (for testing, doesn't actually take anything into account)
+            // Notice that, at present, because the VecUnits isn't actually sorted,
+            // this might launch before every adjacent worker is in.
+            else if (unitType == Rocket)
+            {
+                if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
+
+                mars.updateKarboniteAmount(gc);
+                pair<int, int> landingLocPair = mars.optimalsquare();
+                printf("%d %d\n", landingLocPair.first, landingLocPair.second);
+                bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
+                if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
+                {
+                    printf("Launching...\n");
+                    bc_GameController_launch_rocket(gc, id, landingLoc);
+                }
+                else printf("Launch FAILED\n");
+                delete_bc_MapLocation(landingLoc);
             }
             // NOTE: this is some basic attacking strategy
             // and is not by any means actually good.
@@ -696,66 +693,66 @@ int main()
             delete_bc_Location(loc);
         }
 
-        // For each factory which doesn't have enough workers:
+        // For each structure which doesn't have enough workers:
         // duplicate workers around it to fulfil the quota
         // (we don't 'steal' workers that are passing by since
         //  that might stuff us up)
         // also make sure no units are at the locations
         for (auto P : dirAssigned)
         {
-            uint16_t factid; char bitmask;
-            tie(factid, bitmask) = P;
+            uint16_t structureid; int numAssigned;
+            tie(structureid, numAssigned) = P;
 
-            bc_Unit *fact = bc_GameController_unit(gc, factid);
-            bc_Location *loc = bc_Unit_location(fact);
+            bc_Unit *structure = bc_GameController_unit(gc, structureid);
+            bc_Location *loc = bc_Unit_location(structure);
             bc_MapLocation *mapLoc = bc_Location_map_location(loc);
 
-            // save me
-            int setBits = __builtin_popcount(bitmask);
-            if (setBits < reqAssignees[factid])
+            if (numAssigned < reqAssignees[structureid])
             {
-                bc_MapLocation *factAdj[8];
+                bc_MapLocation *structureAdj[8];
                 uint16_t workerid[8];
+                bool hasworker[8];
                 for (int d = 0; d < 8; ++d) {
-                    factAdj[d] = bc_MapLocation_add(mapLoc, (bc_Direction)d);
-                    bc_Unit *unit = bc_GameController_sense_unit_at_location(gc, factAdj[d]);
-                    workerid[d] = bc_Unit_id(unit);
+                    structureAdj[d] = bc_MapLocation_add(mapLoc, (bc_Direction)d);
+                    bc_Unit *unit = bc_GameController_sense_unit_at_location(gc, structureAdj[d]);
+                    hasworker[d] = !!unit;
+                    if (unit) workerid[d] = bc_Unit_id(unit);
                     delete_bc_Unit(unit);
                 }
 
                 // we don't actually really need to be smart about this.
                 // let's do a greedy which is suboptimal but whatever.
-                for (int d = 0; d < 8; ++d) if (bc_GameController_is_occupiable(gc, factAdj[d]))
+                for (int d = 0; d < 8; ++d) if (bc_GameController_is_occupiable(gc, structureAdj[d]))
                 {
-                    if (setBits >= reqAssignees[factid]) break;
-                    for (int j = 0; j < 8; ++j) if (bitmask & (1<<j))
+                    if (numAssigned >= reqAssignees[structureid]) break;
+                    for (int j = 0; j < 8; ++j) if (hasworker[j])
                     {
                         // we might be able to clone from robot j
                         // to robot d.
-                        if (bc_MapLocation_is_adjacent_to(factAdj[d], factAdj[j]))
+                        if (bc_MapLocation_is_adjacent_to(structureAdj[d], structureAdj[j]))
                         {
-                            bc_Direction dir = bc_MapLocation_direction_to(factAdj[j], factAdj[d]);
+                            bc_Direction dir = bc_MapLocation_direction_to(structureAdj[j], structureAdj[d]);
                             if (bc_GameController_can_replicate(gc, workerid[j], dir)) {
                                 bc_GameController_replicate(gc, workerid[j], dir);
 
-                                // assign the new one to the rocket
-                                bc_Unit *newUnit = bc_GameController_sense_unit_at_location(gc, factAdj[d]);
+                                // assign the new one to the structure
+                                bc_Unit *newUnit = bc_GameController_sense_unit_at_location(gc, structureAdj[d]);
                                 uint16_t newid = bc_Unit_id(newUnit);
-                                assignedFactory[newid] = factid;
+                                assignedStructure[newid] = structureid;
 
                                 delete_bc_Unit(newUnit);
 
-                                setBits++;
+                                numAssigned++;
                                 break;
                             }
                         }
                     }
                 }
 
-                for (int d = 0; d < 8; ++d) delete_bc_MapLocation(factAdj[d]);
+                for (int d = 0; d < 8; ++d) delete_bc_MapLocation(structureAdj[d]);
             }
 
-            delete_bc_Unit(fact);
+            delete_bc_Unit(structure);
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
