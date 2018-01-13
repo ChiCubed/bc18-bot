@@ -588,7 +588,7 @@ int main()
                 // Build a structure next to us
                 // (test code)
                 if (round == 30) createBlueprint(gc, unit, id, 3, East, Factory);
-                if (round == 150 || round == 200) createBlueprint(gc, unit, id, 3, North, Rocket);
+                if (round == 150 || round == 250) createBlueprint(gc, unit, id, 1, North, Rocket);
                 
                 // Let's try and get into an adjacent rocket.
                 // (Again, test code.)
