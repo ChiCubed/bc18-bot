@@ -777,6 +777,7 @@ struct RangerStrat
         // So i'll just randomly go
         // TODO: Still try to attack or something
    //     printf("Randomly moving ranger\n");
+        assert(good.size());
         int l = good[rand()%good.size()];
         if (l != 8)
         {
@@ -982,16 +983,18 @@ int main()
                 else printf("Launch FAILED\n");
                 delete_bc_MapLocation(landingLoc);
             }
-            // For now we just spawn Knights.
+            // For now we just spawn units in equal proportions.
             else if (unitType == Factory)
             {
                 // Let's build some stuff.
                 // Why not.
                 if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
 
-                if (bc_GameController_can_produce_robot(gc, id, Ranger))
+                bc_UnitType type = (rand() % 3 ? (rand() % 2 ? Knight : Ranger) : Mage);
+
+                if (bc_GameController_can_produce_robot(gc, id, type))
                 {
-                    bc_GameController_produce_robot(gc, id, Ranger);
+                    bc_GameController_produce_robot(gc, id, type);
                 }
 
                 for (int j = 0; j < 8; ++j)
