@@ -679,6 +679,10 @@ struct RangerStrat
         	good.clear();
         	good.push_back(8);
         }
+        if (good.empty())
+        {
+            good.push_back(8);
+        }
         random_shuffle(good.begin(), good.end());
         int mxdis = 0;
         atDis[0].emplace_back(x, y);
