@@ -28,8 +28,9 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     int mars[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
     int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
-    int rocketsInComp[3000], mnInAComp;
+    int rocketsInComp[3000], mnInAComp, workersInComp[3000];
     set<pair<int, int> > taken;
+    unordered_set<int> landedRockets;
     bc_AsteroidPattern* asteroidPattern;
     void init(bc_GameController* gc)
     {
@@ -129,7 +130,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         return ans;
     }
 
-    pair<int, int> optimalsquare()
+    pair<int, int> optimalsquare(bool count = true)
     {
         int A = 1; //constant, representing how much weighting the amount of karbonite should have
         int B = 1; //weighting of size of component
@@ -162,8 +163,8 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                 best = max(best, mp(mp(rating, rand()), mp(i, j))); //rand is so that it picks randomly among ties, rather than picking highest x and y
             }
         }
-        hasrocket[best.second.first][best.second.second] = true;
-        rocketsInComp[comp[best.second.first][best.second.second]]++;
+        if (count) hasrocket[best.second.first][best.second.second] = true;
+        if (count) rocketsInComp[comp[best.second.first][best.second.second]]++;
         return best.second;
     }   
     void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
@@ -176,10 +177,11 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                 loc = new_bc_MapLocation(Mars, i, j);
                 karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
             //    if (karbonite[i][j]) printf("at %d %d\n", i, j);
-          //      if (bc_GameController_has_unit_at_location(gc, loc)) hasUnit[i][j] = 1;
+         	 //   if (bc_GameController_has_unit_at_location(gc, loc)) { hasUnit[i][j] = 1; printf("helllo\n"); }
             //    else hasUnit[i][j] = 0;
                 hasUnit[i][j] = 0;
                 delete_bc_MapLocation(loc);
+               	workersInComp[comp[i][j]] = 0;
             }
         }
     }
@@ -311,6 +313,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
             }
             if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
             else delete_bc_Unit(unit);
+           	mars.workersInComp[mars.comp[x][y]]++;
         }
         else if (unitType == Rocket) // unload
         {
@@ -323,7 +326,12 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                     mars.numberOfWorkers++; // Currently the code assumes all things in rockets are workers.
                 }
             }
-            /*bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
+            if (mars.landedRockets.find(id) == mars.landedRockets.end())
+            {
+            	mars.landedRockets.insert(id);
+            	mars.rocketsInComp[mars.comp[x][y]]++;
+            }
+         /*   bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
             int len = bc_VecUnitID_len(garrisonUnits);
             delete_bc_VecUnitID(garrisonUnits);
             if (!len)
@@ -331,9 +339,32 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                 printf("Trying to disintegrate\n");
                 bc_GameController_disintegrate_unit(gc, id);
             }
-            else printf("%d\n", len);*/
-            delete_bc_Unit(unit);
+            else printf("%d\n", len);
+            delete_bc_Unit(unit);*/
         }   
+    }
+    for (auto unit : canMove)
+    {
+    	bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        uint16_t id = bc_Unit_id(unit);
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
+        if (mars.workersInComp[mars.comp[x][y]] < 2*mars.rocketsInComp[mars.comp[x][y]]) // we want to have 2 workers per rocket that landed
+        {
+        	for (int i = 0; i < 8; i++)
+        	{
+        		if (bc_GameController_can_replicate(gc, id, (bc_Direction)i))
+        		{
+        			printf("Duplicated worker\n");
+        			bc_GameController_replicate(gc, id, (bc_Direction)i);
+        			mars.workersInComp[mars.comp[x][y]]++;
+        			break;
+        		}
+        	}
+        }
     }
     while (!canMove.empty()) // where should we move to
     {
@@ -411,7 +442,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
         }
         if (!worked)
         {
-            printf("rip...\n");
+        //    printf("rip...\n");
             for (auto unit : canMove)
             {
                 delete_bc_Unit(unit);
@@ -447,7 +478,10 @@ int main()
     bc_Planet myPlanet = bc_GameController_planet(gc);
     mars.init(gc);
     earth.init(gc);
-
+    if (myPlanet == Mars)
+    {
+    	mars.optimalsquare(false);
+    }
     bc_PlanetMap* map = bc_GameController_starting_map(gc, myPlanet);
     int myPlanetR = bc_PlanetMap_height_get(map);
     int myPlanetC = bc_PlanetMap_width_get(map);
