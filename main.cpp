@@ -425,8 +425,9 @@ void mineKarboniteOnEarth(bc_GameController* gc)
             {
             	// randomly walk
             	uint16_t id = bc_Unit_id(unit);
-            	for (int l = 0; l < 8; l++)
+            	for (int i = 0; i < 8; i++)
             	{
+            		int l = rand()%8;
             		if (bc_GameController_is_move_ready(gc, id) && bc_GameController_can_move(gc, id, (bc_Direction)l))
            			{
                			bc_GameController_move_robot(gc, id, (bc_Direction)l);
