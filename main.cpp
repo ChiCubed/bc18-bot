@@ -601,6 +601,23 @@ struct RangerStrat
 		delete_bc_MapLocation(loc);
 		return false;
 	}
+	bool enemyknight(int x, int y)
+	{
+		bc_MapLocation* loc = new_bc_MapLocation(myPlanet, x, y);
+		if (bc_GameController_has_unit_at_location(gc, loc))
+		{
+			bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
+			if (bc_Unit_team(unit) != myTeam && bc_Unit_unit_type(unit) == Knight)
+			{
+				delete_bc_MapLocation(loc);
+				delete_bc_Unit(unit);
+				return true;
+			}
+			delete_bc_Unit(unit);
+		}
+		delete_bc_MapLocation(loc);
+		return false;
+	}
 	bool existsOnMap(int x, int y)
 	{
 		if (friendly(x, y)) return false;
@@ -610,19 +627,8 @@ struct RangerStrat
 	}
 	// for rangers: does all their work
 	// also rip indenting .... 
-	void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
-	{	
-		// so we want to consider the 9 possible spots we could move to (including our current location)
-		// each of them mark their nearest enemy within 2 moves (if such an enemy exist). If one does out square is *not* safe
-		// Then just go to the safest square and attack an enemy. Seems good
-		//printf("starting\n");
-		uint16_t id = bc_Unit_id(unit);
-		bc_Location* loc = bc_Unit_location(unit);
-		if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
-		bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-		int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
-		delete_bc_Location(loc);
-		delete_bc_MapLocation(mapLoc);
+	vector<int> findGood(bc_GameController* gc, int id, int x, int y)
+	{
 		vector<int> good;
 		for (int l = 0; l <= 8; l++)
 		{
@@ -642,7 +648,7 @@ struct RangerStrat
         		int y = q.front().second;
         	//	printf("%d %d - %d %d\n", x, y, i, j);
         		q.pop();
-        		if (enemy(x,y)) bad = true;
+        		if (enemyknight(x,y)) bad = true;
         		if (dis[x][y] == 2) continue;
         		for (int k = 0; k < 8; k++)
         		{
@@ -684,6 +690,22 @@ struct RangerStrat
             good.push_back(8);
         }
         random_shuffle(good.begin(), good.end());
+        return good;
+	}
+	void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
+	{	
+		// so we want to consider the 9 possible spots we could move to (including our current location)
+		// each of them mark their nearest enemy within 2 moves (if such an enemy exist). If one does out square is *not* safe
+		// Then just go to the safest square and attack an enemy. Seems good
+		//printf("starting\n");
+		uint16_t id = bc_Unit_id(unit);
+		bc_Location* loc = bc_Unit_location(unit);
+		if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+		bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+		int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
+		delete_bc_Location(loc);
+		delete_bc_MapLocation(mapLoc);
+		vector<int> good = findGood(gc, id, x, y);
         int mxdis = 0;
         atDis[0].emplace_back(x, y);
         upto++;
@@ -792,6 +814,140 @@ struct RangerStrat
         	else printf("ERROR: Can't move\n");
         }
 	}
+	unordered_set<int> assigned, isSuicide, haventseen;
+	unordered_map<int, pair<int, int> > targetSquare;
+	unordered_map<int, int> timeSet;
+	void suicideRanger(bc_GameController* gc, bc_Unit* unit, int round)
+	{
+		// Deals with 'suicide rangers'. Every 20 moves they randomly pick a square they can reach but we can't see. They go towards it
+		// it also tries not to walk *directly* into an enemy
+		uint16_t id = bc_Unit_id(unit);
+		if (!bc_GameController_is_move_ready(gc, id)) return;
+		if (timeSet.find(id) != timeSet.end())
+		{
+			if (timeSet[id] < round-20) // We've been trying to reach this for a while ... lets get a new target
+			{
+				targetSquare.erase(id);
+			}
+		}
+		bc_Location* loc = bc_Unit_location(unit);
+		if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+		bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+		int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
+		if (targetSquare.find(id) != targetSquare.end())
+		{
+			// if i'm at my target square, find a new one
+			int i = targetSquare[id].first;
+			int j = targetSquare[id].second;
+			if (abs(i-x) + abs(j-y) <= 3) // if I'm close enough, find a new target
+			{
+				targetSquare.erase(id);
+			}
+		}
+		delete_bc_Location(loc);
+		delete_bc_MapLocation(mapLoc);
+		vector<int> good = findGood(gc, id, x, y);
+		queue<pair<int, int> > q;
+		vector<pair<int, int> > cantsee;
+		upto++;
+		bool looking = targetSquare.find(id) == targetSquare.end();
+		for (auto l : good)
+		{
+			int i = x + bc_Direction_dx((bc_Direction)l);
+    	  	int j = y + bc_Direction_dy((bc_Direction)l);
+    	  	seen[i][j] = upto;
+    	  	firstdir[i][j] = l;
+    	  	q.emplace(i, j);
+		}
+		while (!q.empty())
+		{
+			int i = q.front().first;
+			int j = q.front().second;
+			int d = (i-x)*(i-x) + (j-y)*(j-y);
+			q.pop();
+			bc_MapLocation* loc = new_bc_MapLocation(myPlanet, i, j);
+			if (enemy(i, j))
+			{
+				if (d <= bc_Unit_attack_range(unit) && d >= 10)
+        		{
+        			if (bc_GameController_is_attack_ready(gc, id))
+        			{
+        				assert(bc_GameController_has_unit_at_location(gc, loc));
+        				bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, loc);
+        				uint16_t enemyid = bc_Unit_id(enemy);
+        				if (bc_GameController_can_attack(gc, id, enemyid))
+        				{
+        					bc_GameController_attack(gc, id, enemyid);
+        				}
+        				else printf("ERROR: Can't attack\n");
+        				delete_bc_Unit(enemy);
+        			}
+        		}
+			}
+			if (enemy(i, j)) continue; 
+			if (looking)
+			{
+				if (!bc_GameController_can_sense_location(gc, loc))
+				{
+					cantsee.emplace_back(i, j);
+				}
+			}
+			delete_bc_MapLocation(loc);
+			for (int k = 0; k < 8; k++)
+        	{
+        		int a = i + bc_Direction_dx((bc_Direction)k);
+    	    	int b = j + bc_Direction_dy((bc_Direction)k);
+    	    	if (!existsOnMap(a, b)) continue;
+    	    	if (seen[a][b] != upto)
+    	    	{
+    	    		seen[a][b] = upto;
+    	    		if (firstdir[i][j] == 8) firstdir[a][b] = k;
+    	    		else firstdir[a][b] = firstdir[i][j];
+    	    		q.emplace(a, b);
+    	    	}
+        	}
+		}
+		if (!looking)
+		{
+			pair<int, int> target = targetSquare[id];
+			if (seen[target.first][target.second] == upto)
+			{
+				int l = firstdir[target.first][target.second];
+				if (bc_GameController_can_move(gc, id, (bc_Direction)l))
+        		{
+        			bc_GameController_move_robot(gc, id, (bc_Direction)l);
+        		}
+        		else printf("ERROR: Can't   move\n");
+        		return;
+			}
+		}
+		if (cantsee.empty())
+		{
+			// randomly move;
+			int l = good[rand()%good.size()];
+        	if (l != 8)
+        	{
+        		if (bc_GameController_can_move(gc, id, (bc_Direction)l))
+        		{
+        			bc_GameController_move_robot(gc, id, (bc_Direction)l);
+        		}
+        		else printf("ERROR: Can't move rand\n");
+        	}
+		}
+		else
+		{
+			printf("doing %d\n", id);
+			pair<int, int> target = cantsee[rand()%cantsee.size()];
+			targetSquare[id] = target;
+			timeSet[id] = round;
+			int l = firstdir[target.first][target.second];
+			if (bc_GameController_can_move(gc, id, (bc_Direction)l))
+        	{
+        		bc_GameController_move_robot(gc, id, (bc_Direction)l);
+        	}
+        	else printf("ERROR:   Can't move\n");
+		}
+	}
 };
 RangerStrat dealWithRangers;
 
@@ -887,6 +1043,9 @@ int main()
         dirAssigned.clear();
 
         bc_VecUnit *units = bc_GameController_my_units(gc);
+
+        dealWithRangers.haventseen = dealWithRangers.assigned;
+
         int len = bc_VecUnit_len(units);
         for (int i = 0; i < len; i++) 
         {
@@ -897,7 +1056,6 @@ int main()
 
             // if this unit has died during this turn
             if (!unit) goto loopCleanup;
-
             if (unitType == Worker)
             {
                 if (assignedStructure.find(id) != assignedStructure.end() &&
@@ -1109,7 +1267,15 @@ int main()
             }
             else if (unitType == Ranger)
             {
-            	dealWithRangers.findNearestEnemy(gc, unit);
+            	uint16_t id = bc_Unit_id(unit);
+            	if (dealWithRangers.assigned.find(id) == dealWithRangers.assigned.end())
+            	{
+            		dealWithRangers.assigned.insert(id);
+            		if (!(rand()%10) || dealWithRangers.isSuicide.empty()) dealWithRangers.isSuicide.insert(id);
+            	}
+            	dealWithRangers.haventseen.erase(id);
+            	if (dealWithRangers.isSuicide.find(id) != dealWithRangers.isSuicide.end()) dealWithRangers.suicideRanger(gc, unit, round);
+            	else dealWithRangers.findNearestEnemy(gc, unit);
             }
             // TODO:
             // We need some way of making sure that our
@@ -1233,6 +1399,12 @@ int main()
                 delete_bc_Unit(unit);
                 delete_bc_Location(loc);
             }
+        }
+        for (auto it = dealWithRangers.haventseen.begin(); it != dealWithRangers.haventseen.end(); ++it)
+        {
+        	int a = *it;
+        	dealWithRangers.isSuicide.erase(a);
+        	dealWithRangers.assigned.erase(a);
         }
 
         // For each structure which doesn't have enough workers:
