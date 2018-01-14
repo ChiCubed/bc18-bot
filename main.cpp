@@ -191,6 +191,8 @@ struct EarthSTRUCT //contains a more readable map of earth
     int r, c;
     int earth[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
+    int seen[60][60], upto, dis[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
+    set<pair<int, int> > taken;
     void init(bc_GameController* gc)
     {
         bc_Planet bc_Planet_earth = Earth;
@@ -211,6 +213,19 @@ struct EarthSTRUCT //contains a more readable map of earth
         }
         delete_bc_MapLocation(loc);
         delete_bc_PlanetMap(map);
+    }
+    void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
+    { // I think this only has karbonite within the viewable range ......... rip.....
+        bc_MapLocation* loc;
+        for (int i = 0; i < c; i++)
+        {
+            for (int j = 0; j < r; j++)
+            {
+                loc = new_bc_MapLocation(Earth, i, j);
+                karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+                delete_bc_MapLocation(loc);
+            }
+        }
     }
 };
 
@@ -280,7 +295,150 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
+void mineKarboniteOnEarth(bc_GameController* gc)
+{
+	earth.taken.clear();
+    earth.updateKarboniteAmount(gc);
+    bc_VecUnit *units = bc_GameController_my_units(gc); 
+    int len = bc_VecUnit_len(units);
+    vector<bc_Unit*> canMove;
+    for (int l = 0; l < len; l++) 
+    {
+        bc_Unit *unit = bc_VecUnit_index(units, l);
+        bc_UnitType unitType = bc_Unit_unit_type(unit);
+        uint16_t id = bc_Unit_id(unit);
+        bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+        earth.hasUnit[x][y] = 1;
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
+        if (unitType == Worker && assignedStructure.find(id) == assignedStructure.end())
+        {
+            for (int i = 8; i >= 0; i--)
+            {
+                if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                {
+                    printf("harvesting\n");
+                    bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
+                    break; // we can only harvest 1 per turn :(
+                }
+            }
+            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
+            else delete_bc_Unit(unit);
+        }
+    }
+    if (canMove.size() < 5) // not enough workers...
+    {
+    	for (auto unit : canMove)
+    	{
+    		uint16_t id = bc_Unit_id(unit);
+    		for (int i = 0; i < 8; i++)
+        	{
+        		if (bc_GameController_can_replicate(gc, id, (bc_Direction)i))
+        		{
+        			printf("Duplicated worker\n");
+        			bc_GameController_replicate(gc, id, (bc_Direction)i);
+        			break;
+        		}
+        	}
+    	}
+    }
+    while (!canMove.empty()) // where should we move to
+    {
+        bool worked = false;
+        earth.upto++;
+        queue<pair<int, int> > q;
+        for (int i = 0; i < canMove.size(); i++)
+        {
+            auto unit = canMove[i];
+            bc_Location* loc = bc_Unit_location(unit);
+            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+            int x = bc_MapLocation_x_get(mapLoc);
+            int y = bc_MapLocation_y_get(mapLoc);
+            earth.seen[x][y] = earth.upto;
+            earth.robotthatlead[x][y] = i;
+            earth.firstdir[x][y] = 8;
+            q.emplace(x, y);
+            delete_bc_MapLocation(mapLoc);
+            delete_bc_Location(loc);
+        }
+        while (!q.empty())
+        {
+            int x = q.front().first;
+            int y = q.front().second;
+          //  if (x == 12 && y == 10) printf("YAYAYAY\n");
+         //   printf("%d %d\n", x, y);
+            q.pop();
+            if (earth.karbonite[x][y] && earth.taken.find(make_pair(x, y)) == earth.taken.end())
+            {
+                // We've reached some karbonite. Send the robot in question here;
+                earth.taken.insert(make_pair(x, y));
 
+                bc_Unit* unit = canMove[earth.robotthatlead[x][y]];
+                canMove.erase(canMove.begin()+earth.robotthatlead[x][y]);
+                int dir = earth.firstdir[x][y];
+                uint16_t id = bc_Unit_id(unit);
+                // Update the location of robots;
+                bc_Location* loc = bc_Unit_location(unit);
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                int i = bc_MapLocation_x_get(mapLoc);
+                int j = bc_MapLocation_y_get(mapLoc);
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
+                earth.hasUnit[i][j] = 0;
+                if (bc_GameController_can_move(gc, id, (bc_Direction)dir))
+                {
+                    bc_GameController_move_robot(gc, id, (bc_Direction)dir);
+                }
+                // Set the newloc
+                loc = bc_Unit_location(unit);
+                mapLoc = bc_Location_map_location(loc);
+                i = bc_MapLocation_x_get(mapLoc);
+                j = bc_MapLocation_y_get(mapLoc);
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
+                earth.hasUnit[i][j] = 1;
+                delete_bc_Unit(unit);
+                worked = true;
+                break;
+            }   
+            if (earth.earth[x][y] || (earth.hasUnit[x][y] && earth.firstdir[x][y] != 8)) continue;
+            for (int l = 0; l < 8; l++) // consider going this direction
+            {
+                int i = x + bc_Direction_dx((bc_Direction)l);
+                int j = y + bc_Direction_dy((bc_Direction)l);
+                if (i >= 0 && i < earth.c && j >= 0 && j < earth.r && earth.seen[i][j] != earth.upto)
+                {
+                    earth.seen[i][j] = earth.upto;
+                    earth.robotthatlead[i][j] = earth.robotthatlead[x][y];
+                    if (earth.firstdir[x][y] == 8) earth.firstdir[i][j] = l;
+                    else earth.firstdir[i][j] = earth.firstdir[x][y];
+                    q.emplace(i, j);
+                }
+            }
+        }
+        if (!worked)
+        {
+            for (auto unit : canMove)
+            {
+            	// randomly walk
+            	uint16_t id = bc_Unit_id(unit);
+            	for (int i = 0; i < 8; i++)
+            	{
+            		int l = rand()%8;
+            		if (bc_GameController_is_move_ready(gc, id) && bc_GameController_can_move(gc, id, (bc_Direction)l))
+           			{
+               			bc_GameController_move_robot(gc, id, (bc_Direction)l);
+            		}	
+            	}
+                delete_bc_Unit(unit);
+            }
+            canMove.clear();
+        }
+    }
+}
 void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbonite on mars
 {
     mars.taken.clear();
@@ -625,8 +783,6 @@ struct RangerStrat
 		if (myPlanet == Earth) return !earth.earth[x][y];
 		else return !mars.mars[x][y];
 	}
-	// for rangers: does all their work
-	// also rip indenting .... 
 	vector<int> findGood(bc_GameController* gc, int id, int x, int y)
 	{
 		vector<int> good;
@@ -692,6 +848,7 @@ struct RangerStrat
         random_shuffle(good.begin(), good.end());
         return good;
 	}
+	// for rangers: does all their work
 	void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
     {   
         // so we want to consider the 9 possible spots we could move to (including our current location)
@@ -1093,6 +1250,11 @@ int main()
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
+                    else
+                    {
+                    	// no longer need to be assigned
+                    	assignedStructure.erase(id);
+                    }
 
                     // if structure is dead or finished:
                     // structure no longer needs units assigned
@@ -1475,7 +1637,8 @@ int main()
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
-
+        earth.updateKarboniteAmount(gc);
+        mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         fflush(stdout);
