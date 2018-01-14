@@ -316,6 +316,7 @@ void mineKarboniteOnEarth(bc_GameController* gc)
     bc_VecUnit *units = bc_GameController_my_units(gc); 
     int len = bc_VecUnit_len(units);
     vector<bc_Unit*> canMove;
+    vector<bc_Unit*> workers; // all workers
     for (int l = 0; l < len; l++) 
     {
         bc_Unit *unit = bc_VecUnit_index(units, l);
@@ -328,25 +329,32 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         earth.hasUnit[x][y] = 1;
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if (unitType == Worker && assignedStructure.find(id) == assignedStructure.end())
+        if (unitType == Worker)
         {
-            for (int i = 8; i >= 0; i--)
+            // deep copy the unit to help with stuff
+            workers.push_back(bc_Unit_clone(unit));
+            if (assignedStructure.find(id) == assignedStructure.end())
             {
-                if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                for (int i = 8; i >= 0; i--)
                 {
-                    printf("harvesting\n");
-                    bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
-                    break; // we can only harvest 1 per turn :(
+                    if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                    {
+                        printf("harvesting\n");
+                        bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
+                        break; // we can only harvest 1 per turn :(
+                    }
                 }
+                if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
+                else delete_bc_Unit(unit);
             }
-            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
-            else delete_bc_Unit(unit);
         }
     }
     if (canMove.size() < 5) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
-    	for (auto unit : canMove)
+        // we can duplicate even those workers
+        // which are assigned to a structure
+    	for (auto unit : workers)
     	{
     		uint16_t id = bc_Unit_id(unit);
     		for (int i = 0; i < 8; i++)
@@ -375,6 +383,9 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         	}
             if (newCanMove.size() + canMove.size() >= 5) break;
     	}
+
+        for (auto unit : workers) delete_bc_Unit(unit);
+        workers.clear();
 
         canMove.insert(canMove.end(), newCanMove.begin(), newCanMove.end());
     }
