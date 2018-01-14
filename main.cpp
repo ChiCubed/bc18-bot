@@ -235,12 +235,23 @@ EarthSTRUCT earth;
 bool enemyFactory[60][60], enemyRocket[60][60];
 // which rocket / factory a unit is assigned to
 unordered_map<uint16_t, uint16_t> assignedStructure;
+// a permanent assignment to a structure
+// for a worker. if the structure gets damaged,
+// the worker will rebuild.
+unordered_map<uint16_t, uint16_t> permanentAssignedStructure;
+// what direction the assigned structure is in, for a
+// permanently assigned unit
+unordered_map<uint16_t, bc_Direction> permanentAssignedDirection;
+// the type of the assigned structure
+unordered_map<uint16_t, bc_UnitType> permanentAssignedType;
 // which directions are assigned for a structure
 unordered_map<uint16_t, int> dirAssigned;
 // how many workers a rocket / factory should have
 unordered_map<uint16_t, int> reqAssignees;
 
 // returns true if successful
+// the main worker will become
+// permanently assigned to the structure
 bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, int num, bc_Direction dir, bc_UnitType type) {
     if (type != Factory && type != Rocket)
     {
@@ -279,6 +290,9 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
         uint16_t structureid = bc_Unit_id(structure);
 
         assignedStructure[id] = structureid;
+        permanentAssignedStructure[id] = structureid;
+        permanentAssignedDirection[id] = dir;
+        permanentAssignedType[id] = type;
         reqAssignees[structureid] = num;
 
         delete_bc_Location(loc);
@@ -302,6 +316,7 @@ void mineKarboniteOnEarth(bc_GameController* gc)
     bc_VecUnit *units = bc_GameController_my_units(gc); 
     int len = bc_VecUnit_len(units);
     vector<bc_Unit*> canMove;
+    vector<bc_Unit*> workers; // all workers
     for (int l = 0; l < len; l++) 
     {
         bc_Unit *unit = bc_VecUnit_index(units, l);
@@ -314,24 +329,32 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         earth.hasUnit[x][y] = 1;
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if (unitType == Worker && assignedStructure.find(id) == assignedStructure.end())
+        if (unitType == Worker)
         {
-            for (int i = 8; i >= 0; i--)
+            // deep copy the unit to help with stuff
+            workers.push_back(bc_Unit_clone(unit));
+            if (assignedStructure.find(id) == assignedStructure.end())
             {
-                if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                for (int i = 8; i >= 0; i--)
                 {
-                    printf("harvesting\n");
-                    bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
-                    break; // we can only harvest 1 per turn :(
+                    if (bc_GameController_can_harvest(gc, id, (bc_Direction)i))
+                    {
+                        printf("harvesting\n");
+                        bc_GameController_harvest(gc, id, (bc_Direction)i); // harvest the karbonite
+                        break; // we can only harvest 1 per turn :(
+                    }
                 }
+                if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
+                else delete_bc_Unit(unit);
             }
-            if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
-            else delete_bc_Unit(unit);
         }
     }
     if (canMove.size() < 5) // not enough workers...
     {
-    	for (auto unit : canMove)
+        vector<bc_Unit*> newCanMove;
+        // we can duplicate even those workers
+        // which are assigned to a structure
+    	for (auto unit : workers)
     	{
     		uint16_t id = bc_Unit_id(unit);
     		for (int i = 0; i < 8; i++)
@@ -340,10 +363,31 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         		{
         			printf("Duplicated worker\n");
         			bc_GameController_replicate(gc, id, (bc_Direction)i);
+
+                    // get the new worker
+                    bc_Location* loc = bc_Unit_location(unit);
+                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)i);
+                    bc_Unit* newUnit = bc_GameController_sense_unit_at_location(gc, newLoc);
+                    assert(newUnit);
+                    uint16_t newid = bc_Unit_id(newUnit);
+
+                    if (true || bc_GameController_is_move_ready(gc, id)) newCanMove.push_back(newUnit); // consider all workers, rather than the ones that can move
+
+                    delete_bc_Location(loc);
+                    delete_bc_MapLocation(mapLoc);
+                    delete_bc_MapLocation(newLoc);
+
         			break;
         		}
         	}
+            if (newCanMove.size() + canMove.size() >= 5) break;
     	}
+
+        for (auto unit : workers) delete_bc_Unit(unit);
+        workers.clear();
+
+        canMove.insert(canMove.end(), newCanMove.begin(), newCanMove.end());
     }
     while (!canMove.empty()) // where should we move to
     {
@@ -1234,7 +1278,9 @@ int main()
                     uint16_t structureid = assignedStructure[id];
                     bc_Unit *structure = bc_GameController_unit(gc, structureid);
 
-                    if (structure && !bc_Unit_structure_is_built(structure))
+                    if (structure &&
+                        (!bc_Unit_structure_is_built(structure) ||
+                         bc_Unit_health(structure) <= 250))
                     {
                         if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
 
@@ -1244,24 +1290,54 @@ int main()
                             bc_GameController_build(gc, id, structureid);
                         }
 
+                        // repair the structure if we can
+                        if (bc_GameController_can_repair(gc, id, structureid))
+                        {
+                            bc_GameController_repair(gc, id, structureid);
+                        }
+
                         dirAssigned[structureid]++;
 
                         delete_bc_Unit(structure);
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
+
+                    // if this unit is not a permanent assignee:
+                    // this unit no longer has an assigned structure
+                    if (permanentAssignedStructure.find(id) == permanentAssignedStructure.end())
+                    {
+                        assignedStructure.erase(id);
+                    }
                     else
                     {
-                    	// no longer need to be assigned
-                    	assignedStructure.erase(id);
+                        // This unit needs to figure out
+                        // what's going on.
+                        // It won't go anywhere.
+
+                        if (!structure)
+                        {
+                            // Rip, the structure died
+                            // rebuild
+                            int req = reqAssignees[structureid];
+                            reqAssignees.erase(structureid);
+                            assignedStructure.erase(id);
+                            permanentAssignedStructure.erase(id);
+                            createBlueprint(gc, unit, id, req,
+                                            permanentAssignedDirection[id], permanentAssignedType[id]);
+                        }
+
+                        // We know it must have been completely built
+                        // by this point.
+                        // If we need to perform repairs,
+                        // that'll be handled the next time
+                        // that we look at this unit.
+
+                        if (structure) delete_bc_Unit(structure);
+                        delete_bc_MapLocation(mapLoc);
+
+                        goto loopCleanup;
                     }
-
-                    // if structure is dead or finished:
-                    // structure no longer needs units assigned
-                    reqAssignees[assignedStructure[id]] = 0;
-
-                    // this unit no longer has an assigned structure
-                    assignedStructure.erase(id);
 
                     delete_bc_Unit(structure);
                     delete_bc_MapLocation(mapLoc);
@@ -1321,6 +1397,123 @@ int main()
             // For now we just spawn units in equal proportions.
             else if (unitType == Factory)
             {
+                // Check around the structure to ensure that
+                // at least one unit is assigned to it.
+                // If none are, arbitrarily assign one.
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                bc_Direction dir = Center;
+                uint16_t adjid = 0;
+                bool hasPermanentAssignee = false;
+                for (int d = 0; d < 8; ++d)
+                {
+                    bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)d);
+                    bc_Unit* adjUnit = bc_GameController_sense_unit_at_location(gc, newLoc);
+                    if (!adjUnit)
+                    {
+                        delete_bc_MapLocation(newLoc);
+                        continue;
+                    }
+
+                    // if this unit is not assigned to this structure
+                    uint16_t tadjid = bc_Unit_id(adjUnit);
+                    if (assignedStructure.find(tadjid) == assignedStructure.end() ||
+                        assignedStructure[tadjid] != id)
+                    {
+                        delete_bc_MapLocation(newLoc);
+                        delete_bc_Unit(adjUnit);
+                        continue;
+                    }
+
+                    uint16_t adjid = tadjid;
+                    dir = (bc_Direction)d;
+                    if (permanentAssignedStructure.find(adjid) != permanentAssignedStructure.end())
+                    {
+                        // this neighbour is permanently assigned to this structure
+                        hasPermanentAssignee = true; 
+
+                        delete_bc_MapLocation(newLoc);
+                        delete_bc_Unit(adjUnit);
+
+                        break;
+                    }
+
+                    delete_bc_MapLocation(newLoc);
+                    delete_bc_Unit(adjUnit);
+                }
+
+                if (!hasPermanentAssignee)
+                {
+                    printf("factory missing permanent assignee\n");
+                    // We can arbitrarily assign a permanent worker
+                    // to this structure.
+                    // If dir is still Center,
+                    // there are no adjacent assigned workers...
+                    // rip.
+                    // Otherwise we just assign one of them.
+                    if (dir != Center)
+                    {
+                        assignedStructure[adjid] = id;
+                        permanentAssignedStructure[adjid] = id;
+                        permanentAssignedType[adjid] = Factory;
+                        permanentAssignedDirection[adjid] = bc_Direction_opposite(dir);
+                    }
+                    else
+                    {
+                        // We have no adjacent assigned workers.
+                        // Create another one and assign it to us.
+
+                        if (!bc_Unit_structure_is_built(unit))
+                        {
+                            // All adjacent workers died before this factory was finished.
+                            // Not really much we can do now, except pull in a worker
+                            // from somewhere else... which can be implemented later.
+                            goto loopCleanup;
+                        }
+
+                        if (bc_GameController_can_produce_robot(gc, id, Worker))
+                        {
+                            bc_GameController_produce_robot(gc, id, Worker);
+                        }
+
+                        for (int j = 0; j < 8; ++j)
+                        {
+                            if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
+                            {
+                                bc_GameController_unload(gc, id, (bc_Direction)j);
+
+                                // if the unloaded unit was a worker:
+                                // assign it to this factory
+                                bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)j);
+                                bc_Unit* newUnit = bc_GameController_sense_unit_at_location(gc, newLoc);
+
+                                if (bc_Unit_unit_type(newUnit) == Worker)
+                                {
+                                    uint16_t newid = bc_Unit_id(newUnit);
+
+                                    assignedStructure[newid] = id;
+                                    permanentAssignedStructure[newid] = id;
+                                    permanentAssignedType[newid] = Factory;
+                                    permanentAssignedDirection[newid] = bc_Direction_opposite((bc_Direction)j);
+
+                                    delete_bc_MapLocation(newLoc);
+                                    delete_bc_Unit(newUnit);
+
+                                    break;
+                                }
+
+                                delete_bc_MapLocation(newLoc);
+                                delete_bc_Unit(newUnit);
+                            }
+                        }
+
+                        delete_bc_MapLocation(mapLoc);
+
+                        goto loopCleanup;
+                    }
+                }
+
+                delete_bc_MapLocation(mapLoc);
+
                 // Let's build some stuff.
                 // Why not.
                 if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
@@ -1579,6 +1772,8 @@ int main()
         // (we don't 'steal' workers that are passing by since
         //  that might stuff us up)
         // also make sure no units are at the locations
+        // Note that factories which are completed
+        // won't have any assigned.
         for (auto P : dirAssigned)
         {
             uint16_t structureid; int numAssigned;
