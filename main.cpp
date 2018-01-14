@@ -329,6 +329,22 @@ void mineKarboniteOnEarth(bc_GameController* gc)
             else delete_bc_Unit(unit);
         }
     }
+    if (canMove.size() < 5) // not enough workers...
+    {
+    	for (auto unit : canMove)
+    	{
+    		uint16_t id = bc_Unit_id(unit);
+    		for (int i = 0; i < 8; i++)
+        	{
+        		if (bc_GameController_can_replicate(gc, id, (bc_Direction)i))
+        		{
+        			printf("Duplicated worker\n");
+        			bc_GameController_replicate(gc, id, (bc_Direction)i);
+        			break;
+        		}
+        	}
+    	}
+    }
     while (!canMove.empty()) // where should we move to
     {
         bool worked = false;
@@ -405,9 +421,17 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         }
         if (!worked)
         {
-        //    printf("rip...\n");
             for (auto unit : canMove)
             {
+            	// randomly walk
+            	uint16_t id = bc_Unit_id(unit);
+            	for (int l = 0; l < 8; l++)
+            	{
+            		if (bc_GameController_is_move_ready(gc, id) && bc_GameController_can_move(gc, id, (bc_Direction)l))
+           			{
+               			bc_GameController_move_robot(gc, id, (bc_Direction)l);
+            		}	
+            	}
                 delete_bc_Unit(unit);
             }
             canMove.clear();
