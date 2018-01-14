@@ -894,7 +894,7 @@ struct RangerStrat
         return good;
     }
     // for rangers: does all their work
-    void findNearestEnemy(bc_GameController* gc, bc_Unit* unit, int mn = 10)
+    void findNearestEnemy(bc_GameController* gc, bc_Unit* unit, int mn, bool targetsFactory = false)
     {   
         // so we want to consider the 9 possible spots we could move to (including our current location)
         // each of them mark their nearest enemy within 2 moves (if such an enemy exist). If one does out square is *not* safe
@@ -914,6 +914,7 @@ struct RangerStrat
         seen[x][y] = upto;
         firstdir[x][y] = 8;
         // this is a weird bfs/dijkstra
+        pair<int, pair<int, int> > canAttack = make_pair(-1, make_pair(-1, -1));
         for (int k = 0; k <= mxdis; k++)
         {
             for (auto f : atDis[k])
@@ -933,29 +934,37 @@ struct RangerStrat
                         if (dis <= bc_Unit_attack_range(unit) && dis >= mn)
                         {
                             // Can attack. Move to (a, b), attack (i, j)
+                            bc_MapLocation* loc = new_bc_MapLocation(myPlanet, i, j);
+                            assert(bc_GameController_has_unit_at_location(gc, loc));
+                            bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, loc);
+                            if (targetsFactory && bc_Unit_unit_type(enemy) != Rocket && bc_Unit_unit_type(enemy) != Factory)
+                            {
+                                delete_bc_MapLocation(loc);
+                                delete_bc_Unit(enemy);
+                                if (canAttack.first == -1) canAttack = make_pair(l, make_pair(i, j));
+                                break;
+                            }
                             if (l != 8)
                             {
                                 if (bc_GameController_can_move(gc, id, (bc_Direction)l))
                                 {
-                                //  printf("moving\n");
                                     bc_GameController_move_robot(gc, id, (bc_Direction)l);
                                 }
                                 else printf("ERROR: Can't move\n");
                             }
                             if (bc_GameController_is_attack_ready(gc, id))
                             {
-                                bc_MapLocation* loc = new_bc_MapLocation(myPlanet, i, j);
-                                assert(bc_GameController_has_unit_at_location(gc, loc));
-                                bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, loc);
+                                
                                 uint16_t enemyid = bc_Unit_id(enemy);
                                 if (bc_GameController_can_attack(gc, id, enemyid))
                                 {
                                     bc_GameController_attack(gc, id, enemyid);
                                 }
                                 else printf("ERROR: Can't attack\n");
-                                delete_bc_MapLocation(loc);
-                                delete_bc_Unit(enemy);
+                                
                             }
+                            delete_bc_MapLocation(loc);
+                            delete_bc_Unit(enemy);
                             return;
                         }
                     }
@@ -975,6 +984,31 @@ struct RangerStrat
                     }
                 }
             }
+        }
+        if (canAttack.first != -1)
+        {
+            if (canAttack.first != 8)
+            {
+                int l = canAttack.first;
+                if (bc_GameController_can_move(gc, id, (bc_Direction)l))
+                {
+                    bc_GameController_move_robot(gc, id, (bc_Direction)l);
+                }
+                else printf("ERROR: Can't move 2\n");
+            }
+            bc_MapLocation* loc = new_bc_MapLocation(myPlanet, canAttack.second.first, canAttack.second.second);
+            bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, loc);
+            if (bc_GameController_is_attack_ready(gc, id))
+            {
+                uint16_t enemyid = bc_Unit_id(enemy);
+                if (bc_GameController_can_attack(gc, id, enemyid))
+                {
+                    bc_GameController_attack(gc, id, enemyid);
+                }
+                else printf("ERROR: Can't attack\n");
+            }
+            delete_bc_MapLocation(loc);
+            delete_bc_Unit(enemy);
         }
         for (int k = 0; k <= mxdis; k++)
         {
@@ -1029,7 +1063,7 @@ struct RangerStrat
             else printf("ERROR: Can't move\n");
         }
     }
-    unordered_set<int> assigned, isSuicide;
+    unordered_set<int> assigned, isSuicide, isFactory;
     unordered_map<int, pair<int, int> > targetSquare;
     unordered_map<int, int> timeSet;
     void suicideRanger(bc_GameController* gc, bc_Unit* unit, int round)
@@ -1644,7 +1678,7 @@ int main()
                     if (!(rand()%8)) dealWithRangers.isSuicide.insert(id);
                 }
                 if (dealWithRangers.isSuicide.find(id) != dealWithRangers.isSuicide.end()) dealWithRangers.suicideRanger(gc, unit, round);
-                else dealWithRangers.findNearestEnemy(gc, unit);
+                else dealWithRangers.findNearestEnemy(gc, unit, 10);
             }
             // TODO:
             // We need some way of making sure that our
@@ -1662,7 +1696,7 @@ int main()
                 bc_MapLocation *nearestRanger, *nearestOverall;
                 bc_Direction dir;
 
-                dealWithRangers.findNearestEnemy(gc, unit, 0);
+                dealWithRangers.findNearestEnemy(gc, unit, 0, rand()%2);
                 // check if there's a ranger nearby (rip)
                 // note that we check slightly outside our vision range
                 // because someone else might see a ranger
