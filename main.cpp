@@ -1394,7 +1394,6 @@ int main()
                 else printf("Launch FAILED\n");
                 delete_bc_MapLocation(landingLoc);
             }
-            // For now we just spawn units in equal proportions.
             else if (unitType == Factory)
             {
                 // Check around the structure to ensure that
@@ -1518,7 +1517,10 @@ int main()
                 // Why not.
                 if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
 
-                bc_UnitType type = (rand() % 3 ? (rand() % 2 ? Ranger : Knight) : Mage);
+                // Choose proportions to make it work well
+
+                // rand % b < a: a/b probability
+                bc_UnitType type = (rand() % 9 < 7 ? (rand() % 9 < 7 ? Ranger : Knight) : Mage);
 
                 if (bc_GameController_can_produce_robot(gc, id, type))
                 {
