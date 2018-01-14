@@ -1259,6 +1259,23 @@ int main()
         bc_VecUnit *units = bc_GameController_my_units(gc);
 
         int len = bc_VecUnit_len(units);
+
+        // Firstly, let's count the number of each unit type
+        // note: healers and workers are ignored at the moment
+        int nRangers = 0, nKnights = 0, nMages = 0;
+        for (int i = 0; i < len; ++i)
+        {
+            bc_Unit* unit = bc_VecUnit_index(units, i);
+            bc_UnitType unitType = bc_Unit_unit_type(unit);
+
+            if (unitType == Ranger) nRangers++;
+            if (unitType == Knight) nKnights++;
+            if (unitType == Mage) nMages++;
+
+            // don't delete here: we need units later
+        }
+
+
         for (int i = 0; i < len; i++) 
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
@@ -1397,7 +1414,7 @@ int main()
             else if (unitType == Factory)
             {
                 // Check around the structure to ensure that
-                // at least one unit is assigned to it.
+                // at least one unit is permanently assigned to it.
                 // If none are, arbitrarily assign one.
                 bc_MapLocation* mapLoc = bc_Location_map_location(loc);
                 bc_Direction dir = Center;
@@ -1442,7 +1459,6 @@ int main()
 
                 if (!hasPermanentAssignee)
                 {
-                    printf("factory missing permanent assignee\n");
                     // We can arbitrarily assign a permanent worker
                     // to this structure.
                     // If dir is still Center,
@@ -1519,8 +1535,16 @@ int main()
 
                 // Choose proportions to make it work well
 
-                // rand % b < a: a/b probability
-                bc_UnitType type = (rand() % 9 < 7 ? (rand() % 9 < 7 ? Ranger : Knight) : Mage);
+                bc_UnitType type = Knight;
+
+                if (nRangers < max(nKnights * 3, nMages * 2))
+                {
+                    type = Ranger;
+                }
+                else if (nMages * 2 < max(nKnights * 3, nRangers))
+                {
+                    type = Mage;
+                }
 
                 if (bc_GameController_can_produce_robot(gc, id, type))
                 {
@@ -1532,6 +1556,8 @@ int main()
                     if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
                     {
                         bc_GameController_unload(gc, id, (bc_Direction)j);
+
+                        break;
                     }
                 }
             }
