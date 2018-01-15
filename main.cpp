@@ -1617,8 +1617,9 @@ int main()
                 bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
                 int len = bc_VecUnitID_len(garrisonUnits);
                 delete_bc_VecUnitID(garrisonUnits);
-                if (lastRocket + 75 > round || round == 749 || len == 8)
+                if (lastRocket + 120 > round || round == 749 || len == 8)
                 {
+                    // TODO: Take into consideration whether the rocket is being attacked
                     // lets launch the rocket
                     mars.updateKarboniteAmount(gc);
                     pair<int, int> landingLocPair = mars.optimalsquare();
