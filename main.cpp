@@ -1202,11 +1202,92 @@ struct RangerStrat
 };
 RangerStrat dealWithRangers;
 
+pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* units, int len, bc_UnitType structure)
+{
+    // placed it in a function so that it can be used for rockets as well.
+            bc_Unit* bestUnit;
+            bc_Direction bestDir = Center;
+            int maxDist = -1;
+            for (int i = 0; i < len; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(units, i);
+                uint16_t id = bc_Unit_id(unit);
+                bc_UnitType unitType = bc_Unit_unit_type(unit);
+
+                if (unitType != Worker ||
+                    permanentAssignedStructure.find(id) != permanentAssignedStructure.end())
+                {
+                    continue;
+                }
+
+                bc_Location* loc = bc_Unit_location(unit);
+                if (bc_Location_is_in_garrison(loc) ||
+                    bc_Location_is_in_space(loc))
+                {
+                    delete_bc_Location(loc);
+
+                    continue;
+                }
+
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                int x = bc_MapLocation_x_get(mapLoc);
+                int y = bc_MapLocation_y_get(mapLoc);
+
+                for (int d = 0; d < 8; ++d)
+                {
+                    if (bc_GameController_can_blueprint(gc, id, structure, (bc_Direction)d) &&
+                        bc_UnitType_blueprint_cost(structure) <= bc_GameController_karbonite(gc))
+                    {
+                        int dx = bc_Direction_dx((bc_Direction)d);
+                        int dy = bc_Direction_dy((bc_Direction)d);
+                        int dist = distToInitialEnemy[x+dx][y+dy];
+                        if (dist > maxDist)
+                        {
+                            maxDist = dist;
+                            bestUnit = unit;
+                            bestDir = (bc_Direction)d;
+                        }
+                    }
+                }
+
+                delete_bc_Location(loc);
+                delete_bc_MapLocation(mapLoc);
+
+                // make sure not to delete the unit here
+            }
+    return make_pair(bestUnit, bestDir);
+}
+void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
+{
+    // tries to load this unit into any adjacent rocket
+    bc_UnitType unitType = bc_Unit_unit_type(unit);
+    uint16_t id = bc_Unit_id(unit);
+    if (bc_Location_is_on_planet(loc, Earth))
+    {
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        bc_VecUnit* vecUnits = bc_GameController_sense_nearby_units_by_type(gc, mapLoc, 3, Rocket);
+        int len = bc_VecUnit_len(vecUnits);
+        for (int i = 0; i < len; i++)
+        {
+            bc_Unit* rocketUnit = bc_VecUnit_index(vecUnits, i);
+            int rocketId = bc_Unit_id(rocketUnit);
+            if (bc_GameController_can_load(gc, rocketId, id))
+            {
+                printf("Loading into rocket\n");
+                bc_GameController_load(gc, rocketId, id);
+            }
+            delete_bc_Unit(rocketUnit);
+
+        }
+        delete_bc_MapLocation(mapLoc);
+        delete_bc_VecUnit(vecUnits);
+    }
+}
+int lastRocket, savingForRocket;
 int main() 
 {
     printf("Player C++ bot starting\n");
 
-    srand(420);
 
     bc_Direction dir = North;
     bc_Direction opposite = bc_Direction_opposite(dir);
@@ -1241,6 +1322,8 @@ int main()
 
     bc_Team currTeam = bc_GameController_team(gc);
     bc_Team enemyTeam = (currTeam == Red ? Blue : Red);
+
+    srand(420*(int)currTeam);
 
     // compute initial distance to enemy units
     // for use in naive factory building
@@ -1319,8 +1402,6 @@ int main()
         {
             mineKarboniteOnMars(gc);
             fflush(stdout);
-            bc_GameController_next_turn(gc);
-            continue;
         }
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
         for (int i = 0; i < myPlanetC; ++i)
@@ -1381,57 +1462,9 @@ int main()
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
             // from any initial enemy unit location.
-            bc_Unit* bestUnit;
-            bc_Direction bestDir = Center;
-            int maxDist = -1;
-            for (int i = 0; i < len; ++i)
-            {
-                bc_Unit* unit = bc_VecUnit_index(units, i);
-                uint16_t id = bc_Unit_id(unit);
-                bc_UnitType unitType = bc_Unit_unit_type(unit);
-
-                if (unitType != Worker ||
-                    permanentAssignedStructure.find(id) != permanentAssignedStructure.end())
-                {
-                    continue;
-                }
-
-                bc_Location* loc = bc_Unit_location(unit);
-                if (bc_Location_is_in_garrison(loc) ||
-                    bc_Location_is_in_space(loc))
-                {
-                    delete_bc_Location(loc);
-
-                    continue;
-                }
-
-                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-                int x = bc_MapLocation_x_get(mapLoc);
-                int y = bc_MapLocation_y_get(mapLoc);
-
-                for (int d = 0; d < 8; ++d)
-                {
-                    if (bc_GameController_can_blueprint(gc, id, Factory, (bc_Direction)d) &&
-                        bc_UnitType_blueprint_cost(Factory) <= bc_GameController_karbonite(gc))
-                    {
-                        int dx = bc_Direction_dx((bc_Direction)d);
-                        int dy = bc_Direction_dy((bc_Direction)d);
-                        int dist = distToInitialEnemy[x+dx][y+dy];
-                        if (dist > maxDist)
-                        {
-                            maxDist = dist;
-                            bestUnit = unit;
-                            bestDir = (bc_Direction)d;
-                        }
-                    }
-                }
-
-                delete_bc_Location(loc);
-                delete_bc_MapLocation(mapLoc);
-
-                // make sure not to delete the unit here
-            }
-
+            pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Factory);
+            bc_Unit* bestUnit = bestLoc.first;
+            bc_Direction bestDir = bestLoc.second;
             if (bestDir != Center)
             {
                 // we can build a factory!
@@ -1442,7 +1475,25 @@ int main()
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
             }
         }
+        if (round > lastRocket + 100)
+        {
+            // we should make a rocket
+            savingForRocket = true;
+            pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
+            bc_Unit* bestUnit = bestLoc.first;
+            bc_Direction bestDir = bestLoc.second;
+            if (bestDir != Center)
+            {
+                // we can build a rocket!
+                // yaaay
 
+                uint16_t id = bc_Unit_id(bestUnit);
+
+                createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
+                savingForRocket = false;
+                lastRocket = round;
+            }
+        }
 
         for (int i = 0; i < len; i++) 
         {
@@ -1450,11 +1501,12 @@ int main()
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-
+            tryToLoadIntoRocket(gc, unit, loc);
             // if this unit has died during this turn
             if (!unit) goto loopCleanup;
             if (unitType == Worker)
             {
+                if (myPlanet == Mars) goto loopCleanup;
                 if (assignedStructure.find(id) != assignedStructure.end() &&
                     bc_Location_is_on_map(loc))
                 {
@@ -1561,19 +1613,25 @@ int main()
             // this might launch before every adjacent worker is in.
             else if (unitType == Rocket)
             {
-                if (!bc_Unit_structure_is_built(unit)) goto loopCleanup;
-
-                mars.updateKarboniteAmount(gc);
-                pair<int, int> landingLocPair = mars.optimalsquare();
-                printf("%d %d\n", landingLocPair.first, landingLocPair.second);
-                bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
-                if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
+                if (!bc_Unit_structure_is_built(unit) || myPlanet == Mars) goto loopCleanup;
+                bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
+                int len = bc_VecUnitID_len(garrisonUnits);
+                delete_bc_VecUnitID(garrisonUnits);
+                if (lastRocket + 120 > round || round == 749 || len == 8)
                 {
-                    printf("Launching...\n");
-                    bc_GameController_launch_rocket(gc, id, landingLoc);
-                }
-                else printf("Launch FAILED\n");
-                delete_bc_MapLocation(landingLoc);
+                    // TODO: Take into consideration whether the rocket is being attacked
+                    // lets launch the rocket
+                    mars.updateKarboniteAmount(gc);
+                    pair<int, int> landingLocPair = mars.optimalsquare();
+                    bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
+                    if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
+                    {
+                        printf("Launching... %d\n", len);
+                        bc_GameController_launch_rocket(gc, id, landingLoc);
+                    }
+                    else printf("Launch FAILED\n");
+                    delete_bc_MapLocation(landingLoc);
+                }                               
             }
             else if (unitType == Factory)
             {
@@ -1709,12 +1767,13 @@ int main()
                 {
                     type = Mage;
                 }
-
-                if (bc_GameController_can_produce_robot(gc, id, type))
+                if (!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket))
                 {
-                    bc_GameController_produce_robot(gc, id, type);
+                    if (bc_GameController_can_produce_robot(gc, id, type))
+                    {
+                        bc_GameController_produce_robot(gc, id, type);
+                    }
                 }
-
                 for (int j = 0; j < 8; ++j)
                 {
                     if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
@@ -1825,14 +1884,17 @@ int main()
             }
             else if (unitType == Ranger)
             {
-                uint16_t id = bc_Unit_id(unit);
-                if (dealWithRangers.assigned.find(id) == dealWithRangers.assigned.end())
+                if (!bc_Location_is_in_garrison(loc) && !bc_Location_is_in_space(loc))
                 {
-                    dealWithRangers.assigned.insert(id);
-                    if (!(rand()%8)) dealWithRangers.isSuicide.insert(id);
+                    uint16_t id = bc_Unit_id(unit);
+                    if (dealWithRangers.assigned.find(id) == dealWithRangers.assigned.end())
+                    {
+                        dealWithRangers.assigned.insert(id);
+                        if (!(rand()%8)) dealWithRangers.isSuicide.insert(id);
+                    }
+                    if (dealWithRangers.isSuicide.find(id) != dealWithRangers.isSuicide.end()) dealWithRangers.suicideRanger(gc, unit, round);
+                    else dealWithRangers.findNearestEnemy(gc, unit, 10);
                 }
-                if (dealWithRangers.isSuicide.find(id) != dealWithRangers.isSuicide.end()) dealWithRangers.suicideRanger(gc, unit, round);
-                else dealWithRangers.findNearestEnemy(gc, unit, 10);
             }
             // TODO:
             // We need some way of making sure that our
@@ -2025,7 +2087,7 @@ int main()
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
-        earth.updateKarboniteAmount(gc);
+        if (myPlanet == Earth )earth.updateKarboniteAmount(gc);
         // note:
         // the reason for the (round > 1)
         // is that we want to get our first factory built
@@ -2034,7 +2096,7 @@ int main()
         // (so that they can replicate around the factory later.)
         // it might be a bug that the workers don't replicate
         // for factory production on round 1, but this is an easy workaround.
-        if (round > 1) mineKarboniteOnEarth(gc); // mines karbonite on earth
+        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         fflush(stdout);
