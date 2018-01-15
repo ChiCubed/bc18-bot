@@ -1,6 +1,8 @@
 #include "bits/stdc++.h"
 using namespace std;
 #define mp make_pair
+#define pb push_back
+#define emb emplace_back
 // oh god
 #define this it
 #include <bc.h>
@@ -98,7 +100,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         pair<int, int> q[3000];
         int s = 0;
         int e = 0;
-        q[e++] = make_pair(s, e);
+        q[e++] = mp(s, e);
         seen[x][y] = ++upto;
         dis[x][y] = 0;
         while (s != e)
@@ -117,7 +119,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                     {
                         seen[i][j] = upto;
                         dis[i][j] = d+1;
-                        q[e++] = make_pair(s, e);
+                        q[e++] = mp(s, e);
                     }
                 }
             }
@@ -433,10 +435,10 @@ void mineKarboniteOnEarth(bc_GameController* gc)
           //  if (x == 12 && y == 10) printf("YAYAYAY\n");
          //   printf("%d %d\n", x, y);
             q.pop();
-            if (earth.karbonite[x][y] && earth.taken.find(make_pair(x, y)) == earth.taken.end())
+            if (earth.karbonite[x][y] && earth.taken.find(mp(x, y)) == earth.taken.end())
             {
                 // We've reached some karbonite. Send the robot in question here;
-                earth.taken.insert(make_pair(x, y));
+                earth.taken.insert(mp(x, y));
 
                 bc_Unit* unit = canMove[earth.robotthatlead[x][y]];
                 canMove.erase(canMove.begin()+earth.robotthatlead[x][y]);
@@ -612,10 +614,10 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
           //  if (x == 12 && y == 10) printf("YAYAYAY\n");
          //   printf("%d %d\n", x, y);
             q.pop();
-            if (mars.karbonite[x][y] && mars.taken.find(make_pair(x, y)) == mars.taken.end())
+            if (mars.karbonite[x][y] && mars.taken.find(mp(x, y)) == mars.taken.end())
             {
                 // We've reached some karbonite. Send the robot in question here;
-                mars.taken.insert(make_pair(x, y));
+                mars.taken.insert(mp(x, y));
 
                 bc_Unit* unit = canMove[mars.robotthatlead[x][y]];
                 canMove.erase(canMove.begin()+mars.robotthatlead[x][y]);
@@ -771,7 +773,7 @@ pair<bc_MapLocation*, bc_Direction> findNearestEnemy(bc_GameController* gc, bc_T
 
 struct RangerStrat
 {
-    int firstdir[60][60];
+	int hasEnemy[60][70];
     int r, c, seen[60][60], upto, dis[60][60];
     bc_Planet myPlanet;
     bc_Team myTeam;
@@ -845,6 +847,12 @@ struct RangerStrat
         if (myPlanet == Earth) return !earth.earth[x][y];
         else return !mars.mars[x][y];
     }
+    bool existsOnMapNotFriendly(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= c || y >= r) return false;
+        if (myPlanet == Earth) return !earth.earth[x][y];
+        else return !mars.mars[x][y];
+    }
     vector<int> findGood(bc_GameController* gc, int id, int x, int y)
     {
         vector<int> good;
@@ -911,7 +919,6 @@ struct RangerStrat
         return good;
     }
     pair<int, int> storeLoc[60][60][12];
-    int hasEnemy[60][70];
     vector<pair<pair<int, int>, int> > distances;
     vector<pair<pair<int, int>, int> > mageDistances;
     void pushDistances()
@@ -919,42 +926,42 @@ struct RangerStrat
         // These are vertical ranges which make up a rangers attack range
         // TODO: Check this 1e9 times to make sure it isn't wrong
         // The first number is x displacement, 2nd is y displacement, 3rd is length-1
-        distances.emplace_back(make_pair(7, -1), 2);
-        distances.emplace_back(make_pair(6, -3), 6);
-        distances.emplace_back(make_pair(5, -5), 10);
-        distances.emplace_back(make_pair(4, -5), 10);
-        distances.emplace_back(make_pair(3, -6), 4);
-        distances.emplace_back(make_pair(3, 2), 4);
-        distances.emplace_back(make_pair(2, -6), 3);
-        distances.emplace_back(make_pair(2, 3), 3);
-        distances.emplace_back(make_pair(1, -7), 3);
-        distances.emplace_back(make_pair(1, 4), 3);
-        distances.emplace_back(make_pair(0, -7), 3);
-        distances.emplace_back(make_pair(0, 4), 3);
-        distances.emplace_back(make_pair(-7, -1), 2);
-        distances.emplace_back(make_pair(-6, -3), 6);
-        distances.emplace_back(make_pair(-5, -5), 10);
-        distances.emplace_back(make_pair(-4, -5), 10);
-        distances.emplace_back(make_pair(-3, -6), 4);
-        distances.emplace_back(make_pair(-3, 2), 4);
-        distances.emplace_back(make_pair(-2, -6), 3);
-        distances.emplace_back(make_pair(-2, 3), 3);
-        distances.emplace_back(make_pair(-1, -7), 3);
-        distances.emplace_back(make_pair(-1, 4), 3);
+        distances.emb(mp(7, -1), 2);
+        distances.emb(mp(6, -3), 6);
+        distances.emb(mp(5, -5), 10);
+        distances.emb(mp(4, -5), 10);
+        distances.emb(mp(3, -6), 4);
+        distances.emb(mp(3, 2), 4);
+        distances.emb(mp(2, -6), 3);
+        distances.emb(mp(2, 3), 3);
+        distances.emb(mp(1, -7), 3);
+        distances.emb(mp(1, 4), 3);
+        distances.emb(mp(0, -7), 3);
+        distances.emb(mp(0, 4), 3);
+        distances.emb(mp(-7, -1), 2);
+        distances.emb(mp(-6, -3), 6);
+        distances.emb(mp(-5, -5), 10);
+        distances.emb(mp(-4, -5), 10);
+        distances.emb(mp(-3, -6), 4);
+        distances.emb(mp(-3, 2), 4);
+        distances.emb(mp(-2, -6), 3);
+        distances.emb(mp(-2, 3), 3);
+        distances.emb(mp(-1, -7), 3);
+        distances.emb(mp(-1, 4), 3);
 
         // These are vertical ranges which make up a mage attack range
         // TODO: Check this 1e9 times to make sure it isn't wrong
-        mageDistances.emplace_back(make_pair(5, -2), 4);
-        mageDistances.emplace_back(make_pair(4, -3), 6);
-        mageDistances.emplace_back(make_pair(3, -4), 8);
-        mageDistances.emplace_back(make_pair(2, -5), 10);
-        mageDistances.emplace_back(make_pair(1, -5), 10);
-        mageDistances.emplace_back(make_pair(0, -5), 10);
-        mageDistances.emplace_back(make_pair(-5, -2), 4);
-        mageDistances.emplace_back(make_pair(-4, -3), 6);
-        mageDistances.emplace_back(make_pair(-3, -4), 8);
-        mageDistances.emplace_back(make_pair(-2, -5), 10);
-        mageDistances.emplace_back(make_pair(-1, -5), 10);
+        mageDistances.emb(mp(5, -2), 4);
+        mageDistances.emb(mp(4, -3), 6);
+        mageDistances.emb(mp(3, -4), 8);
+        mageDistances.emb(mp(2, -5), 10);
+        mageDistances.emb(mp(1, -5), 10);
+        mageDistances.emb(mp(0, -5), 10);
+        mageDistances.emb(mp(-5, -2), 4);
+        mageDistances.emb(mp(-4, -3), 6);
+        mageDistances.emb(mp(-3, -4), 8);
+        mageDistances.emb(mp(-2, -5), 10);
+        mageDistances.emb(mp(-1, -5), 10);
     }
     void preCompLoc()
     {
@@ -968,17 +975,64 @@ struct RangerStrat
         {
             for (int j = 0; j < r; j++)
             {
-                pair<int, int> curr = make_pair(-1, -1);
+                pair<int, int> curr = mp(-1, -1);
                 for (int k = j; k < 11+j; k++)
                 {
                     if (hasEnemy[i][k])
                     {
-                        curr = make_pair(i, k);
+                        curr = mp(i, k);
                     }
                     storeLoc[i][j][k-j] = curr;
                 }
             }
         }
+    }
+    vector<int> backTracking[60][60];
+    void doBfs()
+    {
+    	for (int i = 0; i < c; i++)
+    	{
+    		for (int j = 0; j < r; j++) backTracking[i][j].clear();
+    	}
+    	upto++;
+    	queue<pair<int, int> > q;
+    	for (int i = 0; i < c; i++)
+    	{
+    		for (int j = 0; j < r; j++)
+    		{
+    			if (hasEnemy[i][j])
+    			{
+    				seen[i][j] = upto;
+    				dis[i][j] = 0;
+    				q.emplace(i, j);
+    			}
+    		}
+    	}
+    	while (!q.empty())
+    	{
+    		int x = q.front().first;
+    		int y = q.front().second;
+    		q.pop();
+    		for (int l = 0; l < 8; l++)
+    		{
+    			int i = x + bc_Direction_dx((bc_Direction)l);
+                int j = y + bc_Direction_dy((bc_Direction)l);
+                if (existsOnMapNotFriendly(i, j) && !hasEnemy[i][j])
+                {
+                	if (seen[i][j] != upto)
+                	{
+                		seen[i][j] = upto;
+                		if (!friendly(i, j)) q.emplace(i, j);
+                		dis[i][j] = dis[x][y]+1;
+                	}
+                	if (dis[i][j] == dis[x][y]+1)
+                	{
+                		int op = (int)bc_Direction_opposite((bc_Direction)l);
+                		backTracking[i][j].pb(op);
+                	}
+                }
+    		}
+    	}
     }
     // for rangers: does all their work
     void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
@@ -991,9 +1045,10 @@ struct RangerStrat
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
         bc_UnitType type = bc_Unit_unit_type(unit);
+        bool attacked = false;
         if (bc_GameController_is_attack_ready(gc, id))
         {
-            pair<int, int> target = make_pair(-1, -1);
+            pair<int, int> target = mp(-1, -1);
             if (type == Ranger)
             {
                 for (auto a : distances)
@@ -1049,7 +1104,7 @@ struct RangerStrat
                   //  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
                     if (bc_GameController_can_attack(gc, id, enemyid))
                     {   
-                      //  printf("Attacking!!!\n");
+                      	attacked = true;
                         bc_GameController_attack(gc, id, enemyid);
                     }     
                     else printf("Error: Can't attack\n");
@@ -1057,10 +1112,30 @@ struct RangerStrat
                 else printf("Enemy has already been killed\n");
             }
         }
-
-        // for now we just randonly walk
+        if (!bc_GameController_is_move_ready(gc, id)) return;
         vector<int> good = findGood(gc, id, x, y);
-        assert(good.size());
+        bool isGood[9];
+    	fill_n(isGood, 9, false);
+    	for (int a : good) isGood[a] = true;
+        if (!attacked)
+        {
+        //	printf("moving\n");
+     		random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
+    	    for (int a: backTracking[x][y])
+    	    {
+    	    	if (isGood[a])
+    	    	{
+     	   			// lets go to a;
+        			if (bc_GameController_can_move(gc, id, (bc_Direction)a))
+        			{
+        				bc_GameController_move_robot(gc, id, (bc_Direction)a);
+        				return;
+        			}
+        		}
+        	}
+        }
+        if (attacked && isGood[8]) return; // if we attacked someone, and we can stay where we are, lets do that.
+        // otherwise, lets randomly move;
         int l = good[rand()%good.size()];
         if (l != 8)
         {
@@ -1088,10 +1163,11 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                 if (unitType != Worker
                 #if USE_PERMANENTLY_ASSIGNED_WORKERS
-                    || permanentAssignedStructure.find(id) != permanentAssignedStructure.end())
+                    || permanentAssignedStructure.find(id) != permanentAssignedStructure.end()
                 #else
-                    )
+                    
                 #endif
+                   )
                 {
                     continue;
                 }
@@ -1131,7 +1207,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                 // make sure not to delete the unit here
             }
-    return make_pair(bestUnit, bestDir);
+    return mp(bestUnit, bestDir);
 }
 void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
 {
@@ -1270,6 +1346,7 @@ int main()
         uint32_t round = bc_GameController_round(gc);
         printf("Round %d\n", round);
         dealWithRangers.preCompLoc();
+        dealWithRangers.doBfs();
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
