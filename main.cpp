@@ -503,7 +503,7 @@ void mineKarboniteOnEarth(bc_GameController* gc)
         }
     }
 }
-void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbonite on mars
+void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the mining of Karbonite on mars
 {
     mars.taken.clear();
     mars.updateKarboniteAmount(gc);
@@ -574,7 +574,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
         int y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if (mars.workersInComp[mars.comp[x][y]] < 2*mars.rocketsInComp[mars.comp[x][y]]) // we want to have 2 workers per rocket that landed
+        if (mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) || round >= 750) // we want to have 2 workers per rocket that landed
         {
             for (int i = 0; i < 8; i++)
             {
@@ -583,7 +583,7 @@ void mineKarboniteOnMars(bc_GameController* gc) // Controls the mining of Karbon
                     printf("Duplicated worker\n");
                     bc_GameController_replicate(gc, id, (bc_Direction)i);
                     mars.workersInComp[mars.comp[x][y]]++;
-                    break;
+                    if (mars.workersInComp[mars.comp[x][y]] >= min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && round < 750) break;
                 }
             }
         }
@@ -1360,7 +1360,7 @@ int main()
         }
         if (myPlanet == Mars)
         {
-            mineKarboniteOnMars(gc);
+            mineKarboniteOnMars(gc, round);
         }
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
         opponentExists = false;
@@ -1404,7 +1404,7 @@ int main()
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
 
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -1414,6 +1414,7 @@ int main()
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
             if (unitType == Factory) nFactories++;
+            if (unitType == Worker) nWorkers++;
 
             // don't delete here: we need units later
         }
@@ -1436,20 +1437,21 @@ int main()
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
             }
         }
-        if (myPlanet == Earth && round >= lastRocket + 70 && round > 100)
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 600 && round >= lastRocket + 30)))
         {
             // we should make a rocket
             savingForRocket = true;
             pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
             bc_Unit* bestUnit = bestLoc.first;
             bc_Direction bestDir = bestLoc.second;
+            //printf("trying %d\n", bc_GameController_karbonite(gc));
             if (bestDir != Center)
             {
                 // we can build a rocket!
                 // yaaay
 
                 uint16_t id = bc_Unit_id(bestUnit);
-
+                printf("Blueprinting rocket\n");
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
                 savingForRocket = false;
                 lastRocket = round;
@@ -1478,10 +1480,9 @@ int main()
                     if (structure &&
                         (!bc_Unit_structure_is_built(structure)
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
-                         || bc_Unit_health(structure) <= 250))
-                    #else
-                         ))
+                         || bc_Unit_health(structure) <= 250           
                     #endif
+                         ))
                     {
                         if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
 
@@ -1737,6 +1738,7 @@ int main()
                 {
                     type = Mage;
                 }
+                if (!nWorkers) type = Worker;
                 if (!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket))
                 {
                     if (bc_GameController_can_produce_robot(gc, id, type))
