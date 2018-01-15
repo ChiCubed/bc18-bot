@@ -1176,10 +1176,16 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
                 if (unitType != Worker
                 #if USE_PERMANENTLY_ASSIGNED_WORKERS
                     || permanentAssignedStructure.find(id) != permanentAssignedStructure.end()
-                #else
-                    
                 #endif
                    )
+                {
+                    continue;
+                }
+
+                // make sure we don't assign one that's the only one
+                // assigned to its structure
+                if (assignedStructure.find(id) != assignedStructure.end() &&
+                    dirAssigned[assignedStructure[id]] == 1)
                 {
                     continue;
                 }
@@ -1425,10 +1431,59 @@ int main()
             if (unitType == Ranger) nRangers++;
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
-            if (unitType == Factory) nFactories++;
+            if (unitType == Factory)
+            {
+                // only count factories that aren't finished
+                // or factories that have a decent amount of health
+                // (basic heuristic to rebuild after factories are damaged)
+                if (!bc_Unit_structure_is_built(unit) ||
+                    bc_Unit_health(unit) >= 150)
+                {
+                    nFactories++;
+                }
+            }
             if (unitType == Worker) nWorkers++;
 
             // don't delete here: we need units later
+        }
+
+        // calculate how many assignees each structure has
+
+        // NOTE:
+        // This _MUST_ be done before any calls to
+        // factoryLocation are made.
+
+        for (int i = 0; i < len; ++i) 
+        {
+            bc_Unit* unit = bc_VecUnit_index(units, i);
+            bc_UnitType unitType = bc_Unit_unit_type(unit);
+            uint16_t id = bc_Unit_id(unit);
+            bc_Location* loc = bc_Unit_location(unit);
+
+            if (unitType == Worker && myPlanet == Earth)
+            {
+                if (assignedStructure.find(id) != assignedStructure.end() &&
+                    bc_Location_is_on_map(loc))
+                {
+                    uint16_t structureid = assignedStructure[id];
+                    bc_Unit *structure = bc_GameController_unit(gc, structureid);
+
+                    if (structure &&
+                        (!bc_Unit_structure_is_built(structure)
+                    #if USE_PERMANENTLY_ASSIGNED_WORKERS
+                         || bc_Unit_health(structure) <= 250           
+                    #endif
+                         ))
+                    {
+                        if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
+
+                        dirAssigned[structureid]++;
+                    }
+                    delete_bc_Unit(structure);
+                }
+            }
+
+            delete_bc_Location(loc);
         }
 
         if (nFactories < 3 && myPlanet == Earth)
@@ -1468,6 +1523,7 @@ int main()
                 lastRocket = round;
             }
         }
+
         for (int i = 0; i < len; i++) 
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
@@ -1495,8 +1551,6 @@ int main()
                     #endif
                          ))
                     {
-                        if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
-
                         // build the structure if we can
                         if (bc_GameController_can_build(gc, id, structureid))
                         {
@@ -1508,8 +1562,6 @@ int main()
                         {
                             bc_GameController_repair(gc, id, structureid);
                         }
-
-                        dirAssigned[structureid]++;
 
                         delete_bc_Unit(structure);
                         delete_bc_MapLocation(mapLoc);
