@@ -966,7 +966,7 @@ struct RangerStrat
                             }
                             delete_bc_MapLocation(loc);
                             delete_bc_Unit(enemy);
-                            return;
+                            goto cleanup;
                         }
                     }
                 }
@@ -1040,19 +1040,19 @@ struct RangerStrat
                                     }
                                     else printf("ERROR: Can't move\n");
                                 }
-                                return;
+                                goto cleanup;
                             }
                         }
                         
                     } 
                 }
             }
-            atDis[k].clear();
         }
         // There is nowhere that is both good and safe for me to go
         // So i'll just randomly go
         // TODO: Still try to attack or something
    //     printf("Randomly moving ranger\n");
+        { 
         assert(good.size());
         int l = good[rand()%good.size()];
         if (l != 8)
@@ -1063,6 +1063,9 @@ struct RangerStrat
             }
             else printf("ERROR: Can't move\n");
         }
+        }
+        cleanup: 
+        for (int i = 0; i <= mxdis; i++) atDis[i].clear();
     }
     unordered_set<int> assigned, isSuicide, isFactory;
     unordered_map<int, pair<int, int> > targetSquare;
@@ -1912,18 +1915,14 @@ int main()
                 /*bc_MapLocation* mapLoc = bc_Location_map_location(loc);
                 bc_MapLocation *nearestRanger, *nearestOverall;
                 bc_Direction dir;
-
                 // check if there's a ranger nearby (rip)
                 // note that we check slightly outside our vision range
                 // because someone else might see a ranger
                 tie(nearestRanger, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, true, Ranger);
-
                 tie(nearestOverall, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, false);
-
                 // Check if the nearby ranger's squared distance
                 // is at most 3 times the distance of the nearest unit overall
                 // otherwise we might have higher priorities
-
                 if (nearestRanger &&
                     bc_MapLocation_distance_squared_to(mapLoc, nearestRanger) <=
                     3 * bc_MapLocation_distance_squared_to(mapLoc, nearestOverall))
@@ -1937,7 +1936,6 @@ int main()
                         for (int d = 0; d < 8; ++d)
                         {
                             bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)d);
-
                             int newDist = bc_MapLocation_distance_squared_to(newLoc, nearestRanger);
                             if (newDist > maxDist &&
                                 bc_GameController_can_move(gc, id, (bc_Direction)d))
@@ -1945,7 +1943,6 @@ int main()
                                 bestDir = (bc_Direction)d;
                                 maxDist = newDist;
                             }
-
                             delete_bc_MapLocation(newLoc);
                         }
                         if (bc_GameController_can_move(gc, id, bestDir))
@@ -1953,7 +1950,6 @@ int main()
                             bc_GameController_move_robot(gc, id, bestDir);
                         }
                     }
-
                     // attack!!
                     bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, nearestRanger);
                     uint16_t enemyid = bc_Unit_id(enemy);
@@ -1962,10 +1958,8 @@ int main()
                     {
                         bc_GameController_attack(gc, id, enemyid);
                     }
-
                     delete_bc_Unit(enemy);
                 }
-
                 // Try to shoot at the nearest overall enemy now.
                 // This also occurs if we were unable to attack
                 // a ranger that we're running away from.
@@ -1978,7 +1972,6 @@ int main()
                     {
                         bc_GameController_attack(gc, id, enemyid);
                     }
-
                     delete_bc_Unit(enemy);
                 }
                 else
@@ -2007,7 +2000,6 @@ int main()
                         bc_GameController_move_robot(gc, id, dir);
                     }
                 }
-
                 delete_bc_MapLocation(mapLoc);
                 if (nearestRanger) delete_bc_MapLocation(nearestRanger);
                 if (nearestOverall) delete_bc_MapLocation(nearestOverall);*/
