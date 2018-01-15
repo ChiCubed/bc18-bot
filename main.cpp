@@ -5,7 +5,7 @@ using namespace std;
 #define this it
 #include <bc.h>
 #undef this
-
+bool opponentExists;
 bool check_errors() 
 {
     if (bc_has_err()) 
@@ -874,7 +874,7 @@ struct RangerStrat
         if (good.empty()) 
         {
             // TODO: Do a secondary check. For now we just say they're all good.
-            printf("no good\n");
+          //  printf("no good\n");
             for (int l = 0; l <= 8; l++)
             {
                 int i = x + bc_Direction_dx((bc_Direction)l);
@@ -901,7 +901,6 @@ struct RangerStrat
         // so we want to consider the 9 possible spots we could move to (including our current location)
         // each of them mark their nearest enemy within 2 moves (if such an enemy exist). If one does out square is *not* safe
         // Then just go to the safest square and attack an enemy. Seems good
-        //printf("starting\n");
         uint16_t id = bc_Unit_id(unit);
         bc_Location* loc = bc_Unit_location(unit);
         if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
@@ -917,7 +916,7 @@ struct RangerStrat
         firstdir[x][y] = 8;
         // this is a weird bfs/dijkstra
         pair<int, pair<int, int> > canAttack = make_pair(-1, make_pair(-1, -1));
-        for (int k = 0; k <= mxdis; k++)
+        for (int k = 0; k <= mxdis && opponentExists; k++)
         {
             for (auto f : atDis[k])
             {
@@ -1012,7 +1011,7 @@ struct RangerStrat
             delete_bc_MapLocation(loc);
             delete_bc_Unit(enemy);
         }
-        for (int k = 0; k <= mxdis; k++)
+        for (int k = 0; k <= mxdis && opponentExists; k++)
         {
             for (auto f : atDis[k])
             {
@@ -1262,7 +1261,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
     // tries to load this unit into any adjacent rocket
     bc_UnitType unitType = bc_Unit_unit_type(unit);
     uint16_t id = bc_Unit_id(unit);
-    if (bc_Location_is_on_planet(loc, Earth))
+    if (bc_Location_is_on_planet(loc, Earth) && !bc_Location_is_in_garrison(loc))
     {
         bc_MapLocation* mapLoc = bc_Location_map_location(loc);
         bc_VecUnit* vecUnits = bc_GameController_sense_nearby_units_by_type(gc, mapLoc, 3, Rocket);
@@ -1401,9 +1400,9 @@ int main()
         if (myPlanet == Mars)
         {
             mineKarboniteOnMars(gc);
-            fflush(stdout);
         }
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
+        opponentExists = false;
         for (int i = 0; i < myPlanetC; ++i)
         {
             for (int j = 0; j < myPlanetR; ++j)
@@ -1423,6 +1422,7 @@ int main()
                     // take note
                     if (bc_Unit_team(unit) != currTeam)
                     {
+                        opponentExists = true;
                         if (unitType == Factory) enemyFactory[i][j] = 1;
                         if (unitType == Rocket) enemyRocket[i][j] = 1;
                     }
@@ -1443,6 +1443,7 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
+
         int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0;
         for (int i = 0; i < len; ++i)
         {
@@ -1457,7 +1458,7 @@ int main()
             // don't delete here: we need units later
         }
 
-        if (nFactories < 3)
+        if (nFactories < 3 && myPlanet == Earth)
         {
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
@@ -1475,7 +1476,7 @@ int main()
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
             }
         }
-        if (round > lastRocket + 100)
+        if (myPlanet == Earth && round >= lastRocket + 70 && round > 100)
         {
             // we should make a rocket
             savingForRocket = true;
@@ -1494,14 +1495,13 @@ int main()
                 lastRocket = round;
             }
         }
-
         for (int i = 0; i < len; i++) 
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-            tryToLoadIntoRocket(gc, unit, loc);
+            if (myPlanet == Earth) tryToLoadIntoRocket(gc, unit, loc);
             // if this unit has died during this turn
             if (!unit) goto loopCleanup;
             if (unitType == Worker)
@@ -1617,9 +1617,8 @@ int main()
                 bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
                 int len = bc_VecUnitID_len(garrisonUnits);
                 delete_bc_VecUnitID(garrisonUnits);
-                if (lastRocket + 120 > round || round == 749 || len == 8)
+                if (round == 749 || len == 8 || bc_Unit_health(unit) < 150)
                 {
-                    // TODO: Take into consideration whether the rocket is being attacked
                     // lets launch the rocket
                     mars.updateKarboniteAmount(gc);
                     pair<int, int> landingLocPair = mars.optimalsquare();
@@ -1635,6 +1634,7 @@ int main()
             }
             else if (unitType == Factory)
             {
+                if (myPlanet != Earth) goto loopCleanup;
                 // Check around the structure to ensure that
                 // at least one unit is permanently assigned to it.
                 // If none are, arbitrarily assign one.
@@ -2012,7 +2012,6 @@ int main()
                 if (nearestRanger) delete_bc_MapLocation(nearestRanger);
                 if (nearestOverall) delete_bc_MapLocation(nearestOverall);*/
             }
-
             loopCleanup:
             if (unit)
             {
@@ -2020,8 +2019,6 @@ int main()
                 delete_bc_Location(loc);
             }
         }
-
-
         // For each structure which doesn't have enough workers:
         // duplicate workers around it to fulfil the quota
         // (we don't 'steal' workers that are passing by since
@@ -2031,6 +2028,7 @@ int main()
         // won't have any assigned.
         for (auto P : dirAssigned)
         {
+            if (myPlanet == Mars) continue;
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
 
@@ -2087,7 +2085,7 @@ int main()
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
-        if (myPlanet == Earth )earth.updateKarboniteAmount(gc);
+        if (myPlanet == Earth) earth.updateKarboniteAmount(gc);
         // note:
         // the reason for the (round > 1)
         // is that we want to get our first factory built
@@ -2098,9 +2096,7 @@ int main()
         // for factory production on round 1, but this is an easy workaround.
         if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
-
         fflush(stdout);
-
         bc_GameController_next_turn(gc);
     }
 
