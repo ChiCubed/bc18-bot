@@ -249,6 +249,9 @@ unordered_map<uint16_t, int> dirAssigned;
 // how many workers a rocket / factory should have
 unordered_map<uint16_t, int> reqAssignees;
 
+// initial distance to an enemy unit
+int distToInitialEnemy[60][60];
+
 // returns true if successful
 // the main worker will become
 // permanently assigned to the structure
@@ -1239,6 +1242,69 @@ int main()
     bc_Team currTeam = bc_GameController_team(gc);
     bc_Team enemyTeam = (currTeam == Red ? Blue : Red);
 
+    // compute initial distance to enemy units
+    // for use in naive factory building
+    for (int i = 0; i < 60; ++i)
+    {
+        for (int j = 0; j < 60; ++j)
+        {
+            distToInitialEnemy[i][j] = 1e9;
+        }
+    }
+
+    queue<pair<int,int>> bfsQueue;
+    bc_VecUnit* initUnits = bc_PlanetMap_initial_units_get(map);
+    int len = bc_VecUnit_len(initUnits);
+    for (int i = 0; i < len; ++i)
+    {
+        bc_Unit* unit = bc_VecUnit_index(initUnits, i);
+
+        bc_Team team = bc_Unit_team(unit);
+        if (team == enemyTeam)
+        {
+            bc_Location* loc = bc_Unit_location(unit);
+            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+            int x = bc_MapLocation_x_get(mapLoc);
+            int y = bc_MapLocation_y_get(mapLoc);
+            bfsQueue.push({x, y});
+            distToInitialEnemy[x][y] = 0;
+
+            delete_bc_Location(loc);
+            delete_bc_MapLocation(mapLoc);
+        }
+
+        delete_bc_Unit(unit);
+    }
+    delete_bc_VecUnit(initUnits);
+
+    // now for the bfs
+    while (bfsQueue.size()) {
+        int x, y;
+        tie(x, y) = bfsQueue.front(); bfsQueue.pop();
+
+        if (x < 0 || x >= earth.c ||
+            y < 0 || y >= earth.r ||
+            earth.earth[x][y])
+        {
+            // unpassable
+            continue;
+        }
+
+        for (int d = 0; d < 8; ++d)
+        {
+            int dx = bc_Direction_dx((bc_Direction)d),
+                dy = bc_Direction_dy((bc_Direction)d);
+
+            if (distToInitialEnemy[x+dx][y+dy] >
+                distToInitialEnemy[x][y] + 1)
+            {
+                distToInitialEnemy[x+dx][y+dy] = distToInitialEnemy[x][y] + 1;
+                bfsQueue.push({x+dx, y+dy});
+            }
+        }
+    }
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -1296,7 +1362,7 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -1305,8 +1371,76 @@ int main()
             if (unitType == Ranger) nRangers++;
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
+            if (unitType == Factory) nFactories++;
 
             // don't delete here: we need units later
+        }
+
+        if (nFactories < 3)
+        {
+            // Let's find a location for a new factory
+            // next to a worker that's as far as possible
+            // from any initial enemy unit location.
+            bc_Unit* bestUnit;
+            bc_Direction bestDir = Center;
+            int maxDist = -1;
+            for (int i = 0; i < len; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(units, i);
+                uint16_t id = bc_Unit_id(unit);
+                bc_UnitType unitType = bc_Unit_unit_type(unit);
+
+                if (unitType != Worker ||
+                    permanentAssignedStructure.find(id) != permanentAssignedStructure.end())
+                {
+                    continue;
+                }
+
+                bc_Location* loc = bc_Unit_location(unit);
+                if (bc_Location_is_in_garrison(loc) ||
+                    bc_Location_is_in_space(loc))
+                {
+                    delete_bc_Location(loc);
+
+                    continue;
+                }
+
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                int x = bc_MapLocation_x_get(mapLoc);
+                int y = bc_MapLocation_y_get(mapLoc);
+
+                for (int d = 0; d < 8; ++d)
+                {
+                    if (bc_GameController_can_blueprint(gc, id, Factory, (bc_Direction)d) &&
+                        bc_UnitType_blueprint_cost(Factory) <= bc_GameController_karbonite(gc))
+                    {
+                        int dx = bc_Direction_dx((bc_Direction)d);
+                        int dy = bc_Direction_dy((bc_Direction)d);
+                        int dist = distToInitialEnemy[x+dx][y+dy];
+                        if (dist > maxDist)
+                        {
+                            maxDist = dist;
+                            bestUnit = unit;
+                            bestDir = (bc_Direction)d;
+                        }
+                    }
+                }
+
+                delete_bc_Location(loc);
+                delete_bc_MapLocation(mapLoc);
+
+                // make sure not to delete the unit here
+            }
+
+            if (bestDir != Center)
+            {
+                // we can build a factory!
+                // yaaay
+
+                uint16_t id = bc_Unit_id(bestUnit);
+
+                createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
+            }
         }
 
 
@@ -1393,10 +1527,6 @@ int main()
                     delete_bc_Unit(structure);
                     delete_bc_MapLocation(mapLoc);
                 }
-
-                // Build a structure next to us
-                // (test code)
-                if (round == 1) createBlueprint(gc, unit, id, 3, East, Factory);
 
                 // Don't spawn rockets yet
                 // if (round == 150 || round == 250) createBlueprint(gc, unit, id, 1, North, Rocket);
@@ -1896,7 +2026,15 @@ int main()
             delete_bc_MapLocation(mapLoc);
         }
         earth.updateKarboniteAmount(gc);
-        mineKarboniteOnEarth(gc); // mines karbonite on earth
+        // note:
+        // the reason for the (round > 1)
+        // is that we want to get our first factory built
+        // as quickly as possible, which means
+        // ensuring no units replicate on round 1.
+        // (so that they can replicate around the factory later.)
+        // it might be a bug that the workers don't replicate
+        // for factory production on round 1, but this is an easy workaround.
+        if (round > 1) mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         fflush(stdout);
