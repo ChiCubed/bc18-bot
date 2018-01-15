@@ -553,7 +553,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
                 mars.landedRockets.insert(id);
                 mars.rocketsInComp[mars.comp[x][y]]++;
             }
-         /*   bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
+            bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
             int len = bc_VecUnitID_len(garrisonUnits);
             delete_bc_VecUnitID(garrisonUnits);
             if (!len)
@@ -562,7 +562,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
                 bc_GameController_disintegrate_unit(gc, id);
             }
             else printf("%d\n", len);
-            delete_bc_Unit(unit);*/
+            delete_bc_Unit(unit);
         }   
     }
     for (auto unit : canMove)
@@ -576,7 +576,10 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         delete_bc_MapLocation(mapLoc);
         if (mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) || round >= 750) // we want to have 2 workers per rocket that landed
         {
-            for (int i = 0; i < 8; i++)
+        	vector<int> dir;
+        	for (int i = 0; i < 8; i++) dir.pb(i);
+        	random_shuffle(dir.begin(), dir.end());
+            for (int i : dir)
             {
                 if (bc_GameController_can_replicate(gc, id, (bc_Direction)i))
                 {
@@ -664,9 +667,18 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         }
         if (!worked)
         {
-        //    printf("rip...\n");
-            for (auto unit : canMove)
+           	for (auto unit : canMove)
             {
+                // randomly walk
+                uint16_t id = bc_Unit_id(unit);
+                for (int i = 0; i < 8; i++)
+                {
+                    int l = rand()%8;
+                    if (bc_GameController_is_move_ready(gc, id) && bc_GameController_can_move(gc, id, (bc_Direction)l))
+                    {
+                        bc_GameController_move_robot(gc, id, (bc_Direction)l);
+                    }   
+                }
                 delete_bc_Unit(unit);
             }
             canMove.clear();
@@ -1451,7 +1463,6 @@ int main()
                 // yaaay
 
                 uint16_t id = bc_Unit_id(bestUnit);
-                printf("Blueprinting rocket\n");
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
                 savingForRocket = false;
                 lastRocket = round;
