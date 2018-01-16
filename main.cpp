@@ -1571,20 +1571,25 @@ int main()
         if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 600 && round >= lastRocket + 30)))
         {
             // we should make a rocket
-            savingForRocket = true;
-            pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
-            bc_Unit* bestUnit = bestLoc.first;
-            bc_Direction bestDir = bestLoc.second;
-            //printf("trying %d\n", bc_GameController_karbonite(gc));
-            if (bestDir != Center)
+            // let's make sure we actually have enough factories
+            // before we do anything
+            if (nFactories >= 3)
             {
-                // we can build a rocket!
-                // yaaay
+                savingForRocket = true;
+                pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
+                bc_Unit* bestUnit = bestLoc.first;
+                bc_Direction bestDir = bestLoc.second;
+                //printf("trying %d\n", bc_GameController_karbonite(gc));
+                if (bestDir != Center)
+                {
+                    // we can build a rocket!
+                    // yaaay
 
-                uint16_t id = bc_Unit_id(bestUnit);
-                createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
-                savingForRocket = false;
-                lastRocket = round;
+                    uint16_t id = bc_Unit_id(bestUnit);
+                    createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
+                    savingForRocket = false;
+                    lastRocket = round;
+                }
             }
         }
 
