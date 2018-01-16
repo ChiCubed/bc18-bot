@@ -2408,6 +2408,9 @@ int main()
         // for factory production on round 1, but this is an easy workaround.
         if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
+
+        printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
+
         fflush(stdout);
         bc_GameController_next_turn(gc);
     }
