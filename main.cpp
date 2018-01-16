@@ -1255,7 +1255,6 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                     continue;
                 }
-
                 bc_MapLocation* mapLoc = bc_Location_map_location(loc);
                 int x = bc_MapLocation_x_get(mapLoc);
                 int y = bc_MapLocation_y_get(mapLoc);
@@ -1284,6 +1283,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
             }
     return mp(bestUnit, bestDir);
 }
+map<int, int> numWorkersInRocket, numKnightsInRocket, numRangersInRocket, numMagesInRocket;
 void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
 {
     // tries to load this unit into any adjacent rocket
@@ -1298,8 +1298,20 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
         {
             bc_Unit* rocketUnit = bc_VecUnit_index(vecUnits, i);
             int rocketId = bc_Unit_id(rocketUnit);
+            if (numWorkersInRocket.find(rocketId) == numWorkersInRocket.end())
+            {
+            	numWorkersInRocket[rocketId] = numKnightsInRocket[rocketId] = numRangersInRocket[rocketId] = numMagesInRocket[rocketId] = 0;
+            }
+            if (unitType == Worker && numWorkersInRocket[rocketId] == 1) continue;
+            else if (unitType == Knight && numKnightsInRocket[rocketId] == 3) continue;
+            else if (unitType == Ranger && numRangersInRocket[rocketId] == 3) continue;
+            else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             if (bc_GameController_can_load(gc, rocketId, id))
             {
+            	if (unitType == Worker) numWorkersInRocket[rocketId]++;
+            	else if (unitType == Knight) numKnightsInRocket[rocketId]++;
+            	else if (unitType == Ranger) numRangersInRocket[rocketId]++;
+            	else if (unitType == Mage) numMagesInRocket[rocketId]++;
                 printf("Loading into rocket\n");
                 bc_GameController_load(gc, rocketId, id);
             }
@@ -1310,7 +1322,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
         delete_bc_VecUnit(vecUnits);
     }
 }
-int lastRocket, savingForRocket;
+int lastRocket, savingForRocket, savingForFactory;
 int main() 
 {
     printf("Player C++ bot starting\n");
@@ -1552,6 +1564,7 @@ int main()
 
         if (nFactories < 3 && myPlanet == Earth)
         {
+
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
             // from any initial enemy unit location.
@@ -1562,13 +1575,21 @@ int main()
             {
                 // we can build a factory!
                 // yaaay
-
+            	bc_Location* loc = bc_Unit_location(bestUnit);
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+            	bc_VecUnit* nearbyEnemies = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 40, enemyTeam);
+            	int len = bc_VecUnit_len(nearbyEnemies);
+            	if (len < 2) savingForFactory = true;
+            	else savingForFactory = false;
                 uint16_t id = bc_Unit_id(bestUnit);
-
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
             }
+            else savingForFactory = false;
         }
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 600 && round >= lastRocket + 30)))
+        else savingForFactory = false;
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40)) && !savingForFactory)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -1584,7 +1605,7 @@ int main()
                 {
                     // we can build a rocket!
                     // yaaay
-
+                	printf("Building a rocket\n");
                     uint16_t id = bc_Unit_id(bestUnit);
                     createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
                     savingForRocket = false;
@@ -1689,7 +1710,7 @@ int main()
                 bc_MapLocation* mapLoc = bc_Location_map_location(loc);
                 bc_VecUnit* adjRockets = bc_GameController_sense_nearby_units_by_type(gc, mapLoc, 2, Rocket);
                 int len = bc_VecUnit_len(adjRockets);
-                for (int j = 0; j < len; ++j)
+              /*  for (int j = 0; j < len; ++j)
                 {
                     bc_Unit* rocket = bc_VecUnit_index(adjRockets, j);
                     uint16_t rocketid = bc_Unit_id(rocket);
@@ -1704,7 +1725,7 @@ int main()
                     }
 
                     delete_bc_Unit(rocket);
-                }
+                }*/
 
                 delete_bc_MapLocation(mapLoc);
                 delete_bc_VecUnit(adjRockets);
@@ -1718,7 +1739,7 @@ int main()
                 bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
                 int len = bc_VecUnitID_len(garrisonUnits);
                 delete_bc_VecUnitID(garrisonUnits);
-                if (round == 749 || len == 8 || bc_Unit_health(unit) < 150)
+                if (round == 749 || len == 8 || bc_Unit_health(unit) <= 130)
                 {
                     // lets launch the rocket
                     mars.updateKarboniteAmount(gc);
@@ -1871,7 +1892,7 @@ int main()
                     type = Mage;
                 }
                 if (!nWorkers) type = Worker;
-                if (!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket))
+                if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                 {
                     if (bc_GameController_can_produce_robot(gc, id, type))
                     {
