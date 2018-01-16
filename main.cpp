@@ -35,6 +35,30 @@ bool check_errors()
         return false;
     }
 };
+
+
+// gets the 'distance' between two ratios
+// i.e. an approximate measure of similarity
+// (note: only consistent if one of the input variables is;
+//  it's implemented this way so we can use integers)
+int getRatioDistance(vector<int> A, vector<int> B)
+{
+    assert (A.size() == B.size()); // Ratios are same length
+
+    int res = 0;
+
+    int sumA = accumulate(A.begin(), A.end(), 0);
+    int sumB = accumulate(B.begin(), B.end(), 0);
+
+    for (int i = 0; i < A.size(); ++i)
+    {
+        res += abs(A[i] * sumB - B[i] * sumA);
+    }
+
+    return res;
+}
+
+
 struct MarsSTRUCT //contains a more readable map of mars, as well as the code to find where to send a rocket
 {
     int r, c, numberOfWorkers;
@@ -1899,22 +1923,33 @@ int main()
 
                 // Choose proportions to make it work well
 
+                // knights : mages : rangers
+                vector<int> ratioKMR = {3, 5, 7};
+                int mnDist = getRatioDistance({nKnights + 1, nMages, nRangers}, ratioKMR);
                 bc_UnitType type = Knight;
 
-                if (nRangers < max(nKnights * 3, nMages * 2))
+                if (getRatioDistance({nKnights, nMages + 1, nRangers}, ratioKMR) <= mnDist)
                 {
-                    type = Ranger;
-                }
-                else if (nMages * 2 < max(nKnights * 3, nRangers))
-                {
+                    mnDist = getRatioDistance({nKnights, nMages + 1, nRangers}, ratioKMR);
                     type = Mage;
                 }
+
+                if (getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR) <= mnDist)
+                {
+                    mnDist = getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR);
+                    type = Ranger;
+                }
+
                 if (!nWorkers) type = Worker;
                 if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                 {
                     if (bc_GameController_can_produce_robot(gc, id, type))
                     {
                         bc_GameController_produce_robot(gc, id, type);
+
+                        if (type == Ranger) nRangers++;
+                        if (type == Knight) nKnights++;
+                        if (type == Mage) nMages++;
                     }
                 }
                 for (int j = 0; j < 8; ++j)
