@@ -14,6 +14,10 @@ using namespace std;
 
 
 
+#define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
+bool earthIsDead = false;
+
+
 bool opponentExists;
 bool check_errors() 
 {
@@ -574,7 +578,9 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         int y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if (mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) || round >= 750) // we want to have 2 workers per rocket that landed
+        if (mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) ||
+            round >= 750 ||
+            earthIsDead) // we want to have 2 workers per rocket that landed
         {
         	vector<int> dir;
         	for (int i = 0; i < 8; i++) dir.pb(i);
@@ -1454,6 +1460,14 @@ int main()
         }
         if (myPlanet == Mars)
         {
+            // Check if Earth is dead (RIP)
+            if (round > 50)
+            {
+                bc_Veci32* earthArr = bc_GameController_get_team_array(gc, Earth);
+                // assert (bc_Veci32_len(earthArr) >= 1);
+                earthIsDead |= (bc_Veci32_index(earthArr, 0) == RIP_IN_PIECES_MSG);
+                delete_bc_Veci32(earthArr);
+            }
             mineKarboniteOnMars(gc, round);
         }
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
@@ -1614,7 +1628,11 @@ int main()
             }
         }
 
-        for (int i = 0; i < len; i++) 
+        // if we have no units left:
+        // let's tell Mars to begin worker duplication
+        if (myPlanet == Earth && len == 0) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
+
+        for (int i = 0; i < len; i++)
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
