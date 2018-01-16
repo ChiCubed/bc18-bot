@@ -582,9 +582,9 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
             round >= 750 ||
             earthIsDead) // we want to have 2 workers per rocket that landed
         {
-        	vector<int> dir;
-        	for (int i = 0; i < 8; i++) dir.pb(i);
-        	random_shuffle(dir.begin(), dir.end());
+            vector<int> dir;
+            for (int i = 0; i < 8; i++) dir.pb(i);
+            random_shuffle(dir.begin(), dir.end());
             for (int i : dir)
             {
                 if (bc_GameController_can_replicate(gc, id, (bc_Direction)i))
@@ -673,7 +673,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         }
         if (!worked)
         {
-           	for (auto unit : canMove)
+            for (auto unit : canMove)
             {
                 // randomly walk
                 uint16_t id = bc_Unit_id(unit);
@@ -791,11 +791,12 @@ pair<bc_MapLocation*, bc_Direction> findNearestEnemy(bc_GameController* gc, bc_T
 
 struct RangerStrat
 {
-	int hasEnemy[60][70];
+    int hasEnemy[60][70];
     int r, c, seen[60][60], upto, dis[60][60];
     bc_Planet myPlanet;
     bc_Team myTeam;
     bc_GameController* gc;
+    int numOpWorkers, dontAttackWorkers;
     void init(bc_GameController* GC, bc_Planet planet, bc_Team team)
     {
         gc = GC;
@@ -841,13 +842,13 @@ struct RangerStrat
         delete_bc_MapLocation(loc);
         return false;
     }
-    bool enemyknight(int x, int y)
+    bool enemytype(int x, int y, bc_UnitType type)
     {
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, x, y);
         if (bc_GameController_has_unit_at_location(gc, loc))
         {
             bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
-            if (bc_Unit_team(unit) != myTeam && bc_Unit_unit_type(unit) == Knight)
+            if (bc_Unit_team(unit) != myTeam && bc_Unit_unit_type(unit) == type)
             {
                 delete_bc_MapLocation(loc);
                 delete_bc_Unit(unit);
@@ -892,7 +893,7 @@ struct RangerStrat
                 int y = q.front().second;
             //  printf("%d %d - %d %d\n", x, y, i, j);
                 q.pop();
-                if (enemyknight(x,y)) bad = true;
+                if (enemytype(x,y,Knight)) bad = true;
                 if (dis[x][y] == 2) continue;
                 for (int k = 0; k < 8; k++)
                 {
@@ -993,10 +994,22 @@ struct RangerStrat
     void preCompLoc()
     {
         // precomp in an array for faster querytime
+        numOpWorkers = 0;
         for (int i = 0; i < c; i++)
         {
-            for (int j = 0; j < r; j++) hasEnemy[i][j] = enemy(i, j);
+            for (int j = 0; j < r; j++) 
+            { 
+            	hasEnemy[i][j] = enemy(i, j); 
+            	numOpWorkers += enemytype(i, j, Worker); 
+            }
         }
+        if (myPlanet == Mars && numOpWorkers >= 8)
+        {
+        	printf("Too many opposition workers\n");
+        	// no point prioritising them, they can dupe
+        	dontAttackWorkers = true;
+        }
+        else dontAttackWorkers = false;
         // precomps for each segment of sz up to 11, is there an enemy and where that enemy is
         for (int i = 0; i < c; i++)
         {
@@ -1017,65 +1030,130 @@ struct RangerStrat
     vector<int> backTracking[60][60];
     void doBfs()
     {
-    	for (int i = 0; i < c; i++)
-    	{
-    		for (int j = 0; j < r; j++) backTracking[i][j].clear();
-    	}
-    	upto++;
-    	queue<pair<int, int> > q;
-    	for (int i = 0; i < c; i++)
-    	{
-    		for (int j = 0; j < r; j++)
-    		{
-    			if (hasEnemy[i][j])
-    			{
-    				seen[i][j] = upto;
-    				dis[i][j] = 0;
-    				q.emplace(i, j);
-    			}
-    		}
-    	}
-    	while (!q.empty())
-    	{
-    		int x = q.front().first;
-    		int y = q.front().second;
-    		q.pop();
-    		for (int l = 0; l < 8; l++)
-    		{
-    			int i = x + bc_Direction_dx((bc_Direction)l);
+        for (int i = 0; i < c; i++)
+        {
+            for (int j = 0; j < r; j++) backTracking[i][j].clear();
+        }
+        upto++;
+        queue<pair<int, int> > q;
+        for (int i = 0; i < c; i++)
+        {
+            for (int j = 0; j < r; j++)
+            {
+                if (hasEnemy[i][j])
+                {
+                    seen[i][j] = upto;
+                    dis[i][j] = 0;
+                    q.emplace(i, j);
+                }
+            }
+        }
+        while (!q.empty())
+        {
+            int x = q.front().first;
+            int y = q.front().second;
+            q.pop();
+            for (int l = 0; l < 8; l++)
+            {
+                int i = x + bc_Direction_dx((bc_Direction)l);
                 int j = y + bc_Direction_dy((bc_Direction)l);
                 if (existsOnMapNotFriendly(i, j) && !hasEnemy[i][j])
                 {
-                	if (seen[i][j] != upto)
-                	{
-                		seen[i][j] = upto;
-                		if (!friendly(i, j)) q.emplace(i, j);
-                		dis[i][j] = dis[x][y]+1;
-                	}
-                	if (dis[i][j] == dis[x][y]+1)
-                	{
-                		int op = (int)bc_Direction_opposite((bc_Direction)l);
-                		backTracking[i][j].pb(op);
-                	}
+                    if (seen[i][j] != upto)
+                    {
+                        seen[i][j] = upto;
+                        if (!friendly(i, j)) q.emplace(i, j);
+                        dis[i][j] = dis[x][y]+1;
+                    }
+                    if (dis[i][j] == dis[x][y]+1)
+                    {
+                        int op = (int)bc_Direction_opposite((bc_Direction)l);
+                        backTracking[i][j].pb(op);
+                    }
                 }
-    		}
-    	}
+            }
+        }
+    }
+    bool mageAttack(bc_GameController* gc, bc_Unit* unit, int x, int y, int id)
+    {
+        bool attacked = false;
+        bc_MapLocation* mapLoc;
+        pair<int, int> best = make_pair(-1, -1);
+        int bestWeighting = 0;
+        bc_Unit* newUnit;
+        if (bc_GameController_is_attack_ready(gc, id))
+        {
+            for (int i = max(0, x-5); i < min(c, x+6); i++)
+            {
+                for (int j = max(0, y-5); j < min(r, y+6); j++)
+                {
+                	if ((i-x)*(i-x) + (j-y)*(j-y) > 30) continue;
+                    mapLoc = new_bc_MapLocation(myPlanet, i, j);
+                    if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
+                    delete_bc_MapLocation(mapLoc);
+                    int weighting = 0;
+                    for (int l = 0; l <= 8; l++)
+                    {
+                        int x = i + bc_Direction_dx((bc_Direction)l);
+                        int y = j + bc_Direction_dy((bc_Direction)l);
+                        mapLoc = new_bc_MapLocation(myPlanet, x, y);
+                        if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
+                        newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                        delete_bc_MapLocation(mapLoc);
+                        bc_UnitType unitType = bc_Unit_unit_type(newUnit);
+                        bc_Team unitTeam = bc_Unit_team(newUnit);
+                        if (dontAttackWorkers)
+                        {
+                        	int am = 1;
+                        	if (unitType == Rocket || unitType == Factory) am = 8;
+                        	else if (unitType != Worker) am = 6;
+                   			if (unitTeam == myTeam) { am = -am; am*=2; }
+                   			weighting += am;
+                        }
+                        else
+                        {
+                        	int am = 1;
+                        	if (unitType == Rocket || unitType == Factory) am = 2;
+                        	if (unitTeam == myTeam) { am = -am; am*=2; }
+                        	weighting += am;
+                        }
+                        delete_bc_Unit(newUnit);
+                    }
+                    if (weighting > bestWeighting)
+                    {
+                        best = make_pair(i, j);
+                        bestWeighting = weighting;
+                    }
+                }
+            }
+            if (best.first != -1)
+            {
+                mapLoc = new_bc_MapLocation(myPlanet, best.first, best.second);
+                newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                int enemyid = bc_Unit_id(newUnit);
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Unit(newUnit);
+                if (bc_GameController_can_attack(gc, id, enemyid))
+                {   
+                //    printf("Mage attacked! %d\n", bestWeighting);
+                    attacked = true;
+                    bc_GameController_attack(gc, id, enemyid);
+                }     
+                else printf("Error: Can't attack MAGE\n");
+            }
+        }
+        return attacked;
+
     }
     // for rangers: does all their work
-    void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
-    {   
-        uint16_t id = bc_Unit_id(unit);
-        bc_Location* loc = bc_Unit_location(unit);
-        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
-        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-        int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
-        delete_bc_Location(loc);
-        delete_bc_MapLocation(mapLoc);
+    bool rangerAttack(bc_GameController* gc, bc_Unit* unit, int x, int y, int id)
+    {
         bc_UnitType type = bc_Unit_unit_type(unit);
         bool attacked = false;
         if (bc_GameController_is_attack_ready(gc, id))
         {
             pair<int, int> target = mp(-1, -1);
+            pair<int, int> workerTarget = mp(-1, -1);
             if (type == Ranger)
             {
                 for (auto a : distances)
@@ -1092,36 +1170,30 @@ struct RangerStrat
                     }
                     if (sz < 0) continue;
                     pair<int, int> canAttack = storeLoc[i][j][sz];
-                    if (canAttack.first != -1)
+                    if (dontAttackWorkers)
                     {
-                        if (target.first == -1) target = canAttack;
-                        else if (rand()%3 == 0) target = canAttack;
+                    	if (enemytype(i, j, Worker))
+                    	{
+                    		if (workerTarget.first == -1) workerTarget = canAttack;
+                        	else if (rand()%3 == 0) workerTarget = canAttack;
+                    	}
+                    	else
+                    	{
+                    		if (target.first == -1) target = canAttack;
+                        	else if (rand()%3 == 0) target = canAttack;
+                    	}
+                    }
+                    else
+                    {
+            	        if (canAttack.first != -1)
+                	    {
+                    	    if (target.first == -1) target = canAttack;
+                        	else if (rand()%3 == 0) target = canAttack;
+                    	}
                     }
                 }
             }
-            else
-            {
-                for (auto a : mageDistances)
-                {
-                    int i = x+a.first.first;
-                    int j = y+a.first.second;
-                    int sz = a.second;
-                    if (i < 0 || i >= c) continue;
-                    if (j >= r) continue;
-                    if (j < 0)
-                    {
-                        sz += j;
-                        j = 0;
-                    }
-                    if (sz < 0) continue;
-                    pair<int, int> canAttack = storeLoc[i][j][sz];
-                    if (canAttack.first != -1)
-                    {
-                        if (target.first == -1) target = canAttack;
-                        else if (rand()%3 == 0) target = canAttack;
-                    }
-                }
-            }
+            else printf("WRONG TYPE\n");
             if (target.first != -1)
             {
                 int enemyid = enemy(target.first, target.second);
@@ -1138,7 +1210,37 @@ struct RangerStrat
                 }
                 else printf("Enemy has already been killed\n");
             }
+            if (workerTarget.first != -1)
+            {
+            	int enemyid = enemy(workerTarget.first, workerTarget.second);
+                if (enemyid)
+                {
+                    enemyid--;
+                    if (bc_GameController_can_attack(gc, id, enemyid))
+                    {   
+                        attacked = true;
+                        bc_GameController_attack(gc, id, enemyid);
+                    }     
+                    else printf("Error: Can't attack\n");
+                }
+                else printf("Enemy has already been killed\n");
+            }
         }
+        return attacked;
+    }
+    void findNearestEnemy(bc_GameController* gc, bc_Unit* unit)
+    {   
+        uint16_t id = bc_Unit_id(unit);
+        bc_Location* loc = bc_Unit_location(unit);
+        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
+        bc_UnitType unitType = bc_Unit_unit_type(unit);
+        bool attacked = false;
+        if (unitType == Ranger) attacked = rangerAttack(gc, unit, x, y, id);
+        else if (unitType == Mage) attacked = mageAttack(gc, unit, x, y, id);
         if (!bc_GameController_is_move_ready(gc, id)) return;
         vector<int> good = findGood(gc, id, x, y);
         bool isGood[9];
@@ -1175,15 +1277,15 @@ struct RangerStrat
     }  
     void doJavelinAttack(bc_GameController* gc, bc_Unit* unit)
     {
-    	uint16_t id = bc_Unit_id(unit);
+        uint16_t id = bc_Unit_id(unit);
         bc_Location* loc = bc_Unit_location(unit);
         if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
         bc_MapLocation* mapLoc = bc_Location_map_location(loc);
         int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-    	vector<pair<int, int> > targets;
-    	for (auto a : knightDistances)
+        vector<pair<int, int> > targets;
+        for (auto a : knightDistances)
         {
             int i = x+a.first.first;
             int j = y+a.first.second;
@@ -1205,15 +1307,15 @@ struct RangerStrat
         random_shuffle(targets.begin(), targets.end());
         for (int i = 0; i < targets.size(); i++)
         {
-          	pair<int, int> target = targets[i];
+            pair<int, int> target = targets[i];
             int enemyid = enemy(target.first, target.second);
             if (enemyid)
             {
                 enemyid--;
-            	//  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
+                //  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
                 if (bc_GameController_can_javelin(gc, id, enemyid))
                 {   
-                	printf("Javelin attack!\n");
+                    printf("Javelin attack!\n");
                     bc_GameController_javelin(gc, id, enemyid);
                     break;
                 }     
@@ -1306,18 +1408,18 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc)
             int rocketId = bc_Unit_id(rocketUnit);
             if (numWorkersInRocket.find(rocketId) == numWorkersInRocket.end())
             {
-            	numWorkersInRocket[rocketId] = numKnightsInRocket[rocketId] = numRangersInRocket[rocketId] = numMagesInRocket[rocketId] = 0;
+                numWorkersInRocket[rocketId] = numKnightsInRocket[rocketId] = numRangersInRocket[rocketId] = numMagesInRocket[rocketId] = 0;
             }
-            if (unitType == Worker && numWorkersInRocket[rocketId] == 1) continue;
-            else if (unitType == Knight && numKnightsInRocket[rocketId] == 3) continue;
+            if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
+            else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
             else if (unitType == Ranger && numRangersInRocket[rocketId] == 3) continue;
             else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             if (bc_GameController_can_load(gc, rocketId, id))
             {
-            	if (unitType == Worker) numWorkersInRocket[rocketId]++;
-            	else if (unitType == Knight) numKnightsInRocket[rocketId]++;
-            	else if (unitType == Ranger) numRangersInRocket[rocketId]++;
-            	else if (unitType == Mage) numMagesInRocket[rocketId]++;
+                if (unitType == Worker) numWorkersInRocket[rocketId]++;
+                else if (unitType == Knight) numKnightsInRocket[rocketId]++;
+                else if (unitType == Ranger) numRangersInRocket[rocketId]++;
+                else if (unitType == Mage) numMagesInRocket[rocketId]++;
                 printf("Loading into rocket\n");
                 bc_GameController_load(gc, rocketId, id);
             }
@@ -1444,7 +1546,7 @@ int main()
         {
             printf("Trying to queue research... status: ");
             printf("%d\n", bc_GameController_queue_research(gc, Rocket)); //100
-            bc_GameController_queue_research(gc, Mage);	// 25    125
+            bc_GameController_queue_research(gc, Mage); // 25    125
             bc_GameController_queue_research(gc, Ranger); // 25  150
             bc_GameController_queue_research(gc, Worker); // 25  175
             bc_GameController_queue_research(gc, Knight); // 25  200
@@ -1589,12 +1691,12 @@ int main()
             {
                 // we can build a factory!
                 // yaaay
-            	bc_Location* loc = bc_Unit_location(bestUnit);
+                bc_Location* loc = bc_Unit_location(bestUnit);
                 bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-            	bc_VecUnit* nearbyEnemies = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 40, enemyTeam);
-            	int len = bc_VecUnit_len(nearbyEnemies);
-            	if (len < 2) savingForFactory = true;
-            	else savingForFactory = false;
+                bc_VecUnit* nearbyEnemies = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 40, enemyTeam);
+                int len = bc_VecUnit_len(nearbyEnemies);
+                if (len < 2) savingForFactory = true;
+                else savingForFactory = false;
                 uint16_t id = bc_Unit_id(bestUnit);
                 delete_bc_MapLocation(mapLoc);
                 delete_bc_Location(loc);
@@ -1619,7 +1721,7 @@ int main()
                 {
                     // we can build a rocket!
                     // yaaay
-                	printf("Building a rocket\n");
+                    printf("Building a rocket\n");
                     uint16_t id = bc_Unit_id(bestUnit);
                     createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
                     savingForRocket = false;
@@ -1737,11 +1839,9 @@ int main()
                     {
                         printf("Loading into a random rocket...\n");
                         bc_GameController_load(gc, rocketid, id);
-
                         delete_bc_Unit(rocket);
                         break;
                     }
-
                     delete_bc_Unit(rocket);
                 }*/
 
