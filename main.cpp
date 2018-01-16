@@ -932,7 +932,7 @@ struct RangerStrat
     }
     pair<int, int> storeLoc[60][60][12];
     vector<pair<pair<int, int>, int> > distances;
-    vector<pair<pair<int, int>, int> > mageDistances;
+    vector<pair<pair<int, int>, int> > mageDistances, knightDistances;
     void pushDistances()
     {
         // These are vertical ranges which make up a rangers attack range
@@ -974,6 +974,15 @@ struct RangerStrat
         mageDistances.emb(mp(-3, -4), 8);
         mageDistances.emb(mp(-2, -5), 10);
         mageDistances.emb(mp(-1, -5), 10);
+
+        // Knight distances for javelin
+        knightDistances.emb(mp(3, -1), 2);
+        knightDistances.emb(mp(2, -2), 4);
+        knightDistances.emb(mp(1, -3), 6);
+        knightDistances.emb(mp(0, -3), 6);
+        knightDistances.emb(mp(-3, -1), 2);
+        knightDistances.emb(mp(-2, -2), 4);
+        knightDistances.emb(mp(-1, -3), 6);
     }
     void preCompLoc()
     {
@@ -1116,7 +1125,7 @@ struct RangerStrat
                   //  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
                     if (bc_GameController_can_attack(gc, id, enemyid))
                     {   
-                      	attacked = true;
+                        attacked = true;
                         bc_GameController_attack(gc, id, enemyid);
                     }     
                     else printf("Error: Can't attack\n");
@@ -1127,24 +1136,24 @@ struct RangerStrat
         if (!bc_GameController_is_move_ready(gc, id)) return;
         vector<int> good = findGood(gc, id, x, y);
         bool isGood[9];
-    	fill_n(isGood, 9, false);
-    	for (int a : good) isGood[a] = true;
+        fill_n(isGood, 9, false);
+        for (int a : good) isGood[a] = true;
         if (!attacked)
         {
-        //	printf("moving\n");
-     		random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
-    	    for (int a: backTracking[x][y])
-    	    {
-    	    	if (isGood[a])
-    	    	{
-     	   			// lets go to a;
-        			if (bc_GameController_can_move(gc, id, (bc_Direction)a))
-        			{
-        				bc_GameController_move_robot(gc, id, (bc_Direction)a);
-        				return;
-        			}
-        		}
-        	}
+        //  printf("moving\n");
+            random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
+            for (int a: backTracking[x][y])
+            {
+                if (isGood[a])
+                {
+                    // lets go to a;
+                    if (bc_GameController_can_move(gc, id, (bc_Direction)a))
+                    {
+                        bc_GameController_move_robot(gc, id, (bc_Direction)a);
+                        return;
+                    }
+                }
+            }
         }
         if (attacked && isGood[8]) return; // if we attacked someone, and we can stay where we are, lets do that.
         // otherwise, lets randomly move;
@@ -1156,6 +1165,54 @@ struct RangerStrat
                 bc_GameController_move_robot(gc, id, (bc_Direction)l);
             }
             else printf("ERROR: Can't move\n");
+        }
+    }  
+    void doJavelinAttack(bc_GameController* gc, bc_Unit* unit)
+    {
+    	uint16_t id = bc_Unit_id(unit);
+        bc_Location* loc = bc_Unit_location(unit);
+        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
+    	vector<pair<int, int> > targets;
+    	for (auto a : knightDistances)
+        {
+            int i = x+a.first.first;
+            int j = y+a.first.second;
+            int sz = a.second;
+            if (i < 0 || i >= c) continue;
+            if (j >= r) continue;
+            if (j < 0)
+            {
+                sz += j;
+                j = 0;
+            }
+            if (sz < 0) continue;
+            pair<int, int> canAttack = storeLoc[i][j][sz];
+            if (canAttack.first != -1)
+            {
+                targets.pb(canAttack);
+            }
+        }
+        random_shuffle(targets.begin(), targets.end());
+        for (int i = 0; i < targets.size(); i++)
+        {
+          	pair<int, int> target = targets[i];
+            int enemyid = enemy(target.first, target.second);
+            if (enemyid)
+            {
+                enemyid--;
+            	//  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
+                if (bc_GameController_can_javelin(gc, id, enemyid))
+                {   
+                	printf("Javelin attack!\n");
+                    bc_GameController_javelin(gc, id, enemyid);
+                    break;
+                }     
+                else printf("Error: Can't javelin\n");
+            }
         }
     }    
 };
@@ -1368,13 +1425,20 @@ int main()
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
-            printf("%d\n", bc_GameController_queue_research(gc, Rocket));
-            bc_GameController_queue_research(gc, Mage);
-            bc_GameController_queue_research(gc, Ranger);
-            bc_GameController_queue_research(gc, Worker);
-            bc_GameController_queue_research(gc, Knight);
-            bc_GameController_queue_research(gc, Mage);
-            bc_GameController_queue_research(gc, Ranger);
+            printf("%d\n", bc_GameController_queue_research(gc, Rocket)); //100
+            bc_GameController_queue_research(gc, Mage);	// 25    125
+            bc_GameController_queue_research(gc, Ranger); // 25  150
+            bc_GameController_queue_research(gc, Worker); // 25  175
+            bc_GameController_queue_research(gc, Knight); // 25  200
+            bc_GameController_queue_research(gc, Mage); // 75    275
+            bc_GameController_queue_research(gc, Ranger); // 100 375
+            bc_GameController_queue_research(gc, Knight); // 75  450
+            bc_GameController_queue_research(gc, Knight); // 100 550
+            bc_GameController_queue_research(gc, Mage); // 75    625
+            bc_GameController_queue_research(gc, Worker); // 75  700
+            bc_GameController_queue_research(gc, Worker); // 75  775
+            bc_GameController_queue_research(gc, Worker); // 75  850
+            bc_GameController_queue_research(gc, Rocket); // 100  950    This is literally useless but whatever
         }
         if (myPlanet == Mars)
         {
@@ -1913,7 +1977,7 @@ int main()
 
                     delete_bc_Unit(enemy);
                 }
-
+                if (bc_GameController_is_javelin_ready(gc, id)) dealWithRangers.doJavelinAttack(gc, unit);
                 delete_bc_MapLocation(mapLoc);
                 if (nearestEnemy) delete_bc_MapLocation(nearestEnemy);
             }
