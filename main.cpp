@@ -2041,6 +2041,7 @@ int main()
                     {
                         // what if we're not adjacent to the structure?
                         // let's try to go to it
+                        // also, go around workers
                         bc_Location* structLoc = bc_Unit_location(structure);
                         bc_MapLocation* structMapLoc = bc_Location_map_location(structLoc);
                         delete_bc_Location(structLoc);
@@ -2103,7 +2104,8 @@ int main()
                                         bc_UnitType typeAtLoc = bc_Unit_unit_type(unitAtLoc);
                                         delete_bc_Unit(unitAtLoc);
 
-                                        if (typeAtLoc == Factory || typeAtLoc == Rocket)
+                                        if ((typeAtLoc == Factory || typeAtLoc == Rocket ||
+                                             typeAtLoc == Worker) && (x ^ ox || y ^ oy))
                                         {
                                             continue;
                                         }
