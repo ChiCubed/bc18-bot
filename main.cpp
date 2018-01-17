@@ -299,7 +299,7 @@ map<uint16_t, int> dirAssigned;
 map<uint16_t, int> reqAssignees;
 
 // initial distance to an enemy unit
-int distToInitialEnemy[60][60];
+// int distToInitialEnemy[60][60];
 
 // returns true if successful
 // the main worker will become
@@ -1673,6 +1673,8 @@ int main()
         exit(1);
     }
     printf("Connected!\n");
+    fflush(stdout);
+
     bc_Planet myPlanet = bc_GameController_planet(gc);
     mars.init(gc);
     earth.init(gc);
@@ -1693,6 +1695,7 @@ int main()
     dealWithRangers.pushDistances();
     // compute initial distance to enemy units
     // for use in naive factory building
+    /*
     for (int i = 0; i < 60; ++i)
     {
         for (int j = 0; j < 60; ++j)
@@ -1752,6 +1755,7 @@ int main()
             }
         }
     }
+    */
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -1796,37 +1800,41 @@ int main()
             }
             mineKarboniteOnMars(gc, round);
         }
-        bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
-        opponentExists = false;
-        for (int i = 0; i < myPlanetC; ++i)
+        else
         {
-            for (int j = 0; j < myPlanetR; ++j)
+            bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
+            opponentExists = false;
+            for (int i = 0; i < myPlanetC; ++i)
             {
-                // detect an enemy factory here
-                bc_MapLocation_x_set(loc, i);
-                bc_MapLocation_y_set(loc, j);
-
-                // NOTE: Temporary workaround of
-                // has_unit_at_location
-                bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
-                if (unit)
+                for (int j = 0; j < myPlanetR; ++j)
                 {
-                    bc_UnitType unitType = bc_Unit_unit_type(unit);
-                    
-                    // if it's an enemy and a factory or rocket:
-                    // take note
-                    if (bc_Unit_team(unit) != currTeam)
-                    {
-                        opponentExists = true;
-                        if (unitType == Factory) enemyFactory[i][j] = 1;
-                        if (unitType == Rocket) enemyRocket[i][j] = 1;
-                    }
+                    // detect an enemy factory here
+                    bc_MapLocation_x_set(loc, i);
+                    bc_MapLocation_y_set(loc, j);
 
-                    delete_bc_Unit(unit);
+                    // NOTE: Temporary workaround of
+                    // has_unit_at_location
+                    bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
+                    if (unit)
+                    {
+                        bc_UnitType unitType = bc_Unit_unit_type(unit);
+                        
+                        // if it's an enemy and a factory or rocket:
+                        // take note
+                        if (bc_Unit_team(unit) != currTeam)
+                        {
+                            opponentExists = true;
+                            if (unitType == Factory) enemyFactory[i][j] = 1;
+                            if (unitType == Rocket) enemyRocket[i][j] = 1;
+                        }
+
+                        delete_bc_Unit(unit);
+                    }
                 }
             }
+            delete_bc_MapLocation(loc);
         }
-        delete_bc_MapLocation(loc);
+
         // clear the set of occupied directions
         // for factories
         dirAssigned.clear();
@@ -1920,6 +1928,8 @@ int main()
                 uint16_t id = bc_Unit_id(bestUnit);
                 delete_bc_MapLocation(mapLoc);
                 delete_bc_Location(loc);
+                for (int i = 0; i < len; ++i) delete_bc_Unit(bc_VecUnit_index(nearbyEnemies, i));
+                delete_bc_VecUnit(nearbyEnemies);
                 createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
             }
             else savingForFactory = false;
