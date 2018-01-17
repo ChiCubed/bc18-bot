@@ -1383,7 +1383,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
     // placed it in a function so that it can be used for rockets as well.
             bc_Unit* bestUnit;
             bc_Direction bestDir = Center;
-            int maxDist = -1;
+            int maxDist = 99999;
             int maxAdjFree = -1;
             for (int i = 0; i < len; ++i)
             {
@@ -1452,8 +1452,29 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                             delete_bc_Unit(eunit);
                         }
-
-                        if (dist > maxDist)
+                        delete_bc_VecUnit(enemyUnits);
+                        if (unitType == Rocket)
+                        {
+                        	bc_Team myTeam = (bc_GameController_team(gc) == Red ? Red : Blue);
+                        	// we want rockets near our own units
+                        	enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 20, myTeam); 
+                        	// they're not enemyUnits, but might as well reuse
+                        	int eLen = bc_VecUnit_len(enemyUnits);
+                        	for (int j = 0; j < eLen; ++j)
+                        	{
+                            	bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
+                            	bc_UnitType etype = bc_Unit_unit_type(eunit);
+                            	if (etype != Worker &&
+                                	etype != Rocket &&
+                                	etype != Factory)
+                            	{
+                                	dist--;
+                            	}
+                            	delete_bc_Unit(eunit);
+                        	}
+                       	 	delete_bc_VecUnit(enemyUnits);
+                        }
+                        if (dist < maxDist)
                         {
                             maxDist = dist;
                         }
@@ -1635,17 +1656,15 @@ void bfsRocketDists(bc_GameController* gc)
 int main() 
 {
     printf("Player C++ bot starting\n");
-
+    fflush(stdout);
     bc_Direction dir = North;
     bc_Direction opposite = bc_Direction_opposite(dir);
     check_errors();
 
     printf("Opposite direction of %d: %d\n", dir, opposite);
-
     assert(opposite == South);
 
     printf("Connecting to manager...\n");
-    fflush(stdout);
     bc_GameController *gc = new_bc_GameController();
 
     if (check_errors()) 
@@ -2231,7 +2250,6 @@ int main()
                         else printf("Launch FAILED\n");
                         delete_bc_MapLocation(landingLoc);
                     }
-                    else printf("Not launching... %d\n", len);                               
                 }
                 else if (unitType == Factory)
                 {
