@@ -271,24 +271,24 @@ EarthSTRUCT earth;
 
 bool enemyFactory[60][60], enemyRocket[60][60];
 // which rocket / factory a unit is assigned to
-unordered_map<uint16_t, uint16_t> assignedStructure;
+map<uint16_t, uint16_t> assignedStructure;
 
 #if USE_PERMANENTLY_ASSIGNED_WORKERS
 // a permanent assignment to a structure
 // for a worker. if the structure gets damaged,
 // the worker will rebuild.
-unordered_map<uint16_t, uint16_t> permanentAssignedStructure;
+map<uint16_t, uint16_t> permanentAssignedStructure;
 // what direction the assigned structure is in, for a
 // permanently assigned unit
-unordered_map<uint16_t, bc_Direction> permanentAssignedDirection;
+map<uint16_t, bc_Direction> permanentAssignedDirection;
 // the type of the assigned structure
-unordered_map<uint16_t, bc_UnitType> permanentAssignedType;
+map<uint16_t, bc_UnitType> permanentAssignedType;
 #endif
 
 // which directions are assigned for a structure
-unordered_map<uint16_t, int> dirAssigned;
+map<uint16_t, int> dirAssigned;
 // how many workers a rocket / factory should have
-unordered_map<uint16_t, int> reqAssignees;
+map<uint16_t, int> reqAssignees;
 
 // initial distance to an enemy unit
 int distToInitialEnemy[60][60];
@@ -1102,16 +1102,16 @@ struct RangerStrat
     {
         bool attacked = false;
         bc_MapLocation* mapLoc;
-        pair<int, int> best = make_pair(-1, -1);
+        vector<pair<int, int> > bestv;
         int bestWeighting = 0;
         bc_Unit* newUnit;
         if (bc_GameController_is_attack_ready(gc, id))
         {
-            for (int i = max(0, x-5); i < min(c, x+6); i++)
+            for (int i = max(0, x-6); i < min(c, x+7); i++)
             {
-                for (int j = max(0, y-5); j < min(r, y+6); j++)
+                for (int j = max(0, y-6); j < min(r, y+7); j++)
                 {
-                	if ((i-x)*(i-x) + (j-y)*(j-y) > 30) continue;
+                	if ((i-x)*(i-x) + (j-y)*(j-y) > bc_Unit_attack_range(unit)) continue;
                     mapLoc = new_bc_MapLocation(myPlanet, i, j);
                     if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
                     delete_bc_MapLocation(mapLoc);
@@ -1145,13 +1145,18 @@ struct RangerStrat
                     }
                     if (weighting > bestWeighting)
                     {
-                        best = make_pair(i, j);
+                        bestv.clear();
                         bestWeighting = weighting;
+                    }
+                    if (weighting == bestWeighting)
+                    {
+                        bestv.emb(i, j);
                     }
                 }
             }
-            if (best.first != -1)
+            if (bestWeighting)
             {
+                pair<int, int> best = bestv[rand()%bestv.size()];
                 mapLoc = new_bc_MapLocation(myPlanet, best.first, best.second);
                 newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
                 int enemyid = bc_Unit_id(newUnit);
@@ -1459,7 +1464,6 @@ int main()
 {
     printf("Player C++ bot starting\n");
 
-
     bc_Direction dir = North;
     bc_Direction opposite = bc_Direction_opposite(dir);
     check_errors();
@@ -1469,7 +1473,7 @@ int main()
     assert(opposite == South);
 
     printf("Connecting to manager...\n");
-
+    fflush(stdout);
     bc_GameController *gc = new_bc_GameController();
 
     if (check_errors()) 
@@ -1493,7 +1497,6 @@ int main()
 
     bc_Team currTeam = bc_GameController_team(gc);
     bc_Team enemyTeam = (currTeam == Red ? Blue : Red);
-
     srand(420*(int)currTeam);
     dealWithRangers.init(gc, myPlanet, currTeam);
     dealWithRangers.pushDistances();
@@ -1532,7 +1535,6 @@ int main()
         delete_bc_Unit(unit);
     }
     delete_bc_VecUnit(initUnits);
-
     // now for the bfs
     while (bfsQueue.size()) {
         int x, y;
@@ -1559,7 +1561,6 @@ int main()
             }
         }
     }
-
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -1637,7 +1638,6 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-
         int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0;
         for (int i = 0; i < len; ++i)
         {
@@ -1668,14 +1668,12 @@ int main()
         // NOTE:
         // This _MUST_ be done before any calls to
         // factoryLocation are made.
-
         for (int i = 0; i < len; ++i) 
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-
             if (unitType == Worker && myPlanet == Earth)
             {
                 if (assignedStructure.find(id) != assignedStructure.end() &&
@@ -1698,10 +1696,8 @@ int main()
                     delete_bc_Unit(structure);
                 }
             }
-
             delete_bc_Location(loc);
         }
-
         if (nFactories < 3 && myPlanet == Earth)
         {
 
