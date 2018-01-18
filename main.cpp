@@ -17,7 +17,7 @@ using namespace std;
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
 bool earthIsDead = false;
 bool enemyIsDead = false;
-
+int lastSighting;
 bool opponentExists;
 bool check_errors() 
 {
@@ -1465,8 +1465,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
                             	bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
                             	bc_UnitType etype = bc_Unit_unit_type(eunit);
                             	if (etype != Worker &&
-                                	etype != Rocket &&
-                                	etype != Factory)
+                                	etype != Rocket)
                             	{
                                 	dist--;
                             	}
@@ -1589,7 +1588,7 @@ void bfsRocketDists(bc_GameController* gc)
     {
         bc_Unit* unit = bc_VecUnit_index(units, i);
 
-        if (bc_Unit_unit_type(unit) == Rocket && bc_Unit_structure_is_built(unit))
+        if (bc_Unit_unit_type(unit) == Rocket)
         {
             // don't count rockets which are full
             bc_VecUnitID* unitsInside = bc_Unit_structure_garrison(unit);
@@ -1833,6 +1832,13 @@ int main()
                 }
             }
             delete_bc_MapLocation(loc);
+            if (opponentExists) lastSighting = round;
+            if (lastSighting + 200 <= round && round > 400)
+            {
+            	// opponent is probably dead
+            	enemyIsDead = true;
+            }
+            else if (opponentExists) enemyIsDead = false;
         }
 
         // clear the set of occupied directions
@@ -1935,7 +1941,7 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= 685) || enemyIsDead) && !savingForFactory)
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= 670) || enemyIsDead) && !savingForFactory)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -1962,7 +1968,7 @@ int main()
                 }
                 else savingForRocket = false;
             }
-            else if (round >= 685)
+            else if (round >= 670)
             {
                 if (numberUnits/10 > nRockets)
                 {
