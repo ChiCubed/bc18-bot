@@ -1903,6 +1903,8 @@ int main()
                     #endif
                          ))
                     {
+                        // printf("updating value for %d\n", structureid);
+
                         if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
 
                         dirAssigned[structureid]++;
@@ -2165,6 +2167,7 @@ int main()
                     if (permanentAssignedStructure.find(id) == permanentAssignedStructure.end())
                     {
                     #endif
+                        // printf("unassigned %d from %d\n", id, assignedStructure[id]);
                         assignedStructure.erase(id);
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
                     }
@@ -2575,13 +2578,25 @@ int main()
         // also make sure no units are at the locations
         // Note that factories which are completed
         // won't have any assigned.
-        for (auto P : dirAssigned)
+        if (myPlanet == Earth) for (auto P : dirAssigned)
         {
-            if (myPlanet == Mars) continue;
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
 
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
+
+            if (bc_Unit_structure_is_built(structure)
+            #if USE_PERMANENTLY_ASSIGNED_WORKERS
+                && bc_Unit_health(structure) > 250
+            #endif
+                )
+            {
+                delete_bc_Unit(structure);
+                continue;
+            }
+
+            // printf("assigning workers to %d\n", structureid);
+
             bc_Location *loc = bc_Unit_location(structure);
             bc_MapLocation *mapLoc = bc_Location_map_location(loc);
 
