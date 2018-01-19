@@ -365,7 +365,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-void mineKarboniteOnEarth(bc_GameController* gc)
+void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
 {
     earth.taken.clear();
     earth.updateKarboniteAmount(gc);
@@ -405,7 +405,9 @@ void mineKarboniteOnEarth(bc_GameController* gc)
             }
         }
     }
-    if (canMove.size() < 5) // not enough workers...
+    int amWorkers = totalUnits/7;
+    amWorkers = min(amWorkers, 5);
+    if (canMove.size() < amWorkers) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
         // we can duplicate even those workers
@@ -437,7 +439,7 @@ void mineKarboniteOnEarth(bc_GameController* gc)
                     break;
                 }
             }
-            if (newCanMove.size() + canMove.size() >= 5) break;
+            if (newCanMove.size() + canMove.size() >= amWorkers) break;
         }
 
         for (auto unit : workers) delete_bc_Unit(unit);
@@ -2722,7 +2724,7 @@ int main()
         // (so that they can replicate around the factory later.)
         // it might be a bug that the workers don't replicate
         // for factory production on round 1, but this is an easy workaround.
-        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
+        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
