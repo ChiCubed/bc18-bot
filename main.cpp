@@ -365,7 +365,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-void mineKarboniteOnEarth(bc_GameController* gc)
+void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
 {
     earth.taken.clear();
     earth.updateKarboniteAmount(gc);
@@ -405,7 +405,9 @@ void mineKarboniteOnEarth(bc_GameController* gc)
             }
         }
     }
-    if (canMove.size() < 5) // not enough workers...
+    int amWorkers = totalUnits/7;
+    amWorkers = min(amWorkers, 5);
+    if (canMove.size() < amWorkers) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
         // we can duplicate even those workers
@@ -437,7 +439,7 @@ void mineKarboniteOnEarth(bc_GameController* gc)
                     break;
                 }
             }
-            if (newCanMove.size() + canMove.size() >= 5) break;
+            if (newCanMove.size() + canMove.size() >= amWorkers) break;
         }
 
         for (auto unit : workers) delete_bc_Unit(unit);
@@ -2160,7 +2162,14 @@ int main()
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
-
+                    if (structure && bc_Unit_structure_is_built(structure))
+                    {
+                    	if (dirAssigned[structureid] != 1)
+                    	{
+                    		dirAssigned[structureid]--;
+                    		assignedStructure.erase(id);
+                    	}
+                    }
                     // if this unit is not a permanent assignee:
                     // this unit no longer has an assigned structure
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
@@ -2185,8 +2194,7 @@ int main()
                             reqAssignees.erase(structureid);
                             assignedStructure.erase(id);
                             permanentAssignedStructure.erase(id);
-                            createBlueprint(gc, unit, id, req,
-                                            permanentAssignedDirection[id], permanentAssignedType[id]);
+                     
                         }
 
                         // We know it must have been completely built
@@ -2582,7 +2590,6 @@ int main()
         {
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
-
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
 
             if (bc_Unit_structure_is_built(structure)
@@ -2600,7 +2607,7 @@ int main()
             bc_Location *loc = bc_Unit_location(structure);
             bc_MapLocation *mapLoc = bc_Location_map_location(loc);
 
-            if (numAssigned < reqAssignees[structureid])
+            if (numAssigned < reqAssignees[structureid] && (!bc_Unit_structure_is_built(structure) || !numAssigned))
             {
                 // first let's BFS to try and see if we can steal us some workers
                 // we'll only take workers that are reasonably close to our position
@@ -2703,9 +2710,9 @@ int main()
                         if (bc_MapLocation_is_adjacent_to(structureAdj[d], structureAdj[j]))
                         {
                             bc_Direction dir = bc_MapLocation_direction_to(structureAdj[j], structureAdj[d]);
-                            if (bc_GameController_can_replicate(gc, workerid[j], dir)) {
+                            if (bc_GameController_can_replicate(gc, workerid[j], dir) && numAssigned == 1) {
                                 bc_GameController_replicate(gc, workerid[j], dir);
-
+                                printf("Replicated because there were no nearby\n");
                                 // assign the new one to the structure
                                 bc_Unit *newUnit = bc_GameController_sense_unit_at_location(gc, structureAdj[d]);
                                 uint16_t newid = bc_Unit_id(newUnit);
@@ -2736,7 +2743,7 @@ int main()
         // (so that they can replicate around the factory later.)
         // it might be a bug that the workers don't replicate
         // for factory production on round 1, but this is an easy workaround.
-        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
+        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
