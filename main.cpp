@@ -17,7 +17,7 @@ using namespace std;
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
 bool earthIsDead = false;
 bool enemyIsDead = false;
-int lastSighting;
+
 bool opponentExists;
 bool check_errors() 
 {
@@ -365,7 +365,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
+void mineKarboniteOnEarth(bc_GameController* gc)
 {
     earth.taken.clear();
     earth.updateKarboniteAmount(gc);
@@ -405,9 +405,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
             }
         }
     }
-    int amWorkers = totalUnits/7;
-    amWorkers = min(amWorkers, 5);
-    if (canMove.size() < amWorkers) // not enough workers...
+    if (canMove.size() < 5) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
         // we can duplicate even those workers
@@ -439,7 +437,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
                     break;
                 }
             }
-            if (newCanMove.size() + canMove.size() >= amWorkers) break;
+            if (newCanMove.size() + canMove.size() >= 5) break;
         }
 
         for (auto unit : workers) delete_bc_Unit(unit);
@@ -1048,15 +1046,15 @@ struct RangerStrat
         {
             for (int j = 0; j < r; j++) 
             { 
-            	hasEnemy[i][j] = enemy(i, j); 
-            	numOpWorkers += enemytype(i, j, Worker); 
+                hasEnemy[i][j] = enemy(i, j); 
+                numOpWorkers += enemytype(i, j, Worker); 
             }
         }
         if (myPlanet == Mars && numOpWorkers >= 8)
         {
-        	printf("Too many opposition workers\n");
-        	// no point prioritising them, they can dupe
-        	dontAttackWorkers = true;
+            printf("Too many opposition workers\n");
+            // no point prioritising them, they can dupe
+            dontAttackWorkers = true;
         }
         else dontAttackWorkers = false;
         // precomps for each segment of sz up to 11, is there an enemy and where that enemy is
@@ -1136,7 +1134,7 @@ struct RangerStrat
             {
                 for (int j = max(0, y-6); j < min(r, y+7); j++)
                 {
-                	if ((i-x)*(i-x) + (j-y)*(j-y) > bc_Unit_attack_range(unit)) continue;
+                    if ((i-x)*(i-x) + (j-y)*(j-y) > bc_Unit_attack_range(unit)) continue;
                     mapLoc = new_bc_MapLocation(myPlanet, i, j);
                     if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
                     delete_bc_MapLocation(mapLoc);
@@ -1153,18 +1151,18 @@ struct RangerStrat
                         bc_Team unitTeam = bc_Unit_team(newUnit);
                         if (dontAttackWorkers)
                         {
-                        	int am = 1;
-                        	if (unitType == Rocket || unitType == Factory) am = 8;
-                        	else if (unitType != Worker) am = 6;
-                   			if (unitTeam == myTeam) { am = -am; am*=2; }
-                   			weighting += am;
+                            int am = 1;
+                            if (unitType == Rocket || unitType == Factory) am = 8;
+                            else if (unitType != Worker) am = 6;
+                            if (unitTeam == myTeam) { am = -am; am*=2; }
+                            weighting += am;
                         }
                         else
                         {
-                        	int am = 1;
-                        	if (unitType == Rocket || unitType == Factory) am = 2;
-                        	if (unitTeam == myTeam) { am = -am; am*=2; }
-                        	weighting += am;
+                            int am = 1;
+                            if (unitType == Rocket || unitType == Factory) am = 2;
+                            if (unitTeam == myTeam) { am = -am; am*=2; }
+                            weighting += am;
                         }
                         delete_bc_Unit(newUnit);
                     }
@@ -1226,24 +1224,24 @@ struct RangerStrat
                     pair<int, int> canAttack = storeLoc[i][j][sz];
                     if (dontAttackWorkers)
                     {
-                    	if (enemytype(i, j, Worker))
-                    	{
-                    		if (workerTarget.first == -1) workerTarget = canAttack;
-                        	else if (rand()%3 == 0) workerTarget = canAttack;
-                    	}
-                    	else
-                    	{
-                    		if (target.first == -1) target = canAttack;
-                        	else if (rand()%3 == 0) target = canAttack;
-                    	}
+                        if (enemytype(i, j, Worker))
+                        {
+                            if (workerTarget.first == -1) workerTarget = canAttack;
+                            else if (rand()%3 == 0) workerTarget = canAttack;
+                        }
+                        else
+                        {
+                            if (target.first == -1) target = canAttack;
+                            else if (rand()%3 == 0) target = canAttack;
+                        }
                     }
                     else
                     {
-            	        if (canAttack.first != -1)
-                	    {
-                    	    if (target.first == -1) target = canAttack;
-                        	else if (rand()%3 == 0) target = canAttack;
-                    	}
+                        if (canAttack.first != -1)
+                        {
+                            if (target.first == -1) target = canAttack;
+                            else if (rand()%3 == 0) target = canAttack;
+                        }
                     }
                 }
             }
@@ -1266,7 +1264,7 @@ struct RangerStrat
             }
             if (workerTarget.first != -1)
             {
-            	int enemyid = enemy(workerTarget.first, workerTarget.second);
+                int enemyid = enemy(workerTarget.first, workerTarget.second);
                 if (enemyid)
                 {
                     enemyid--;
@@ -1457,23 +1455,24 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
                         delete_bc_VecUnit(enemyUnits);
                         if (unitType == Rocket)
                         {
-                        	bc_Team myTeam = (bc_GameController_team(gc) == Red ? Red : Blue);
-                        	// we want rockets near our own units
-                        	enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 20, myTeam); 
-                        	// they're not enemyUnits, but might as well reuse
-                        	int eLen = bc_VecUnit_len(enemyUnits);
-                        	for (int j = 0; j < eLen; ++j)
-                        	{
-                            	bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
-                            	bc_UnitType etype = bc_Unit_unit_type(eunit);
-                            	if (etype != Worker &&
-                                	etype != Rocket)
-                            	{
-                                	dist--;
-                            	}
-                            	delete_bc_Unit(eunit);
-                        	}
-                       	 	delete_bc_VecUnit(enemyUnits);
+                            bc_Team myTeam = (bc_GameController_team(gc) == Red ? Red : Blue);
+                            // we want rockets near our own units
+                            enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 20, myTeam); 
+                            // they're not enemyUnits, but might as well reuse
+                            int eLen = bc_VecUnit_len(enemyUnits);
+                            for (int j = 0; j < eLen; ++j)
+                            {
+                                bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
+                                bc_UnitType etype = bc_Unit_unit_type(eunit);
+                                if (etype != Worker &&
+                                    etype != Rocket &&
+                                    etype != Factory)
+                                {
+                                    dist--;
+                                }
+                                delete_bc_Unit(eunit);
+                            }
+                            delete_bc_VecUnit(enemyUnits);
                         }
                         if (dist < maxDist)
                         {
@@ -1539,7 +1538,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             {
                 if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
                 else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 3) continue;
+                else if (unitType == Ranger && numRangersInRocket[rocketId] == 6) continue;
                 else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
@@ -1590,7 +1589,7 @@ void bfsRocketDists(bc_GameController* gc)
     {
         bc_Unit* unit = bc_VecUnit_index(units, i);
 
-        if (bc_Unit_unit_type(unit) == Rocket)
+        if (bc_Unit_unit_type(unit) == Rocket && bc_Unit_structure_is_built(unit))
         {
             // don't count rockets which are full
             bc_VecUnitID* unitsInside = bc_Unit_structure_garrison(unit);
@@ -1767,12 +1766,12 @@ int main()
         {
             printf("Trying to queue research... status: ");
             printf("%d\n", bc_GameController_queue_research(gc, Rocket)); //100
-            bc_GameController_queue_research(gc, Mage); // 25    125
-            bc_GameController_queue_research(gc, Ranger); // 25  150
-            bc_GameController_queue_research(gc, Worker); // 25  175
-            bc_GameController_queue_research(gc, Knight); // 25  200
-            bc_GameController_queue_research(gc, Mage); // 75    275
-            bc_GameController_queue_research(gc, Ranger); // 100 375
+            bc_GameController_queue_research(gc, Ranger); // 25  125
+            bc_GameController_queue_research(gc, Worker); // 25  150
+            bc_GameController_queue_research(gc, Ranger); // 100 250
+            bc_GameController_queue_research(gc, Mage); // 25    275
+            bc_GameController_queue_research(gc, Mage); // 75    350
+            bc_GameController_queue_research(gc, Knight); // 25  375
             bc_GameController_queue_research(gc, Knight); // 75  450
             bc_GameController_queue_research(gc, Knight); // 100 550
             bc_GameController_queue_research(gc, Mage); // 75    625
@@ -1834,13 +1833,6 @@ int main()
                 }
             }
             delete_bc_MapLocation(loc);
-            if (opponentExists) lastSighting = round;
-            if (lastSighting + 200 <= round && round > 400)
-            {
-            	// opponent is probably dead
-            	enemyIsDead = true;
-            }
-            else if (opponentExists) enemyIsDead = false;
         }
 
         // clear the set of occupied directions
@@ -1853,13 +1845,15 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
-
-            if (unitType == Ranger) nRangers++;
+            bc_Location* loc = bc_Unit_location(unit);
+            if (bc_Location_is_in_garrison(loc) && unitType != Worker) nInGarrison++;
+            delete_bc_Location(loc);
+            if (unitType == Ranger) nRangers++; 
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
             if (unitType == Factory)
@@ -1905,8 +1899,6 @@ int main()
                     #endif
                          ))
                     {
-                        // printf("updating value for %d\n", structureid);
-
                         if (dirAssigned.find(structureid) == dirAssigned.end()) dirAssigned[structureid] = 0;
 
                         dirAssigned[structureid]++;
@@ -1945,13 +1937,14 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= 670) || enemyIsDead) && !savingForFactory)
+        int goToMarsRound = 750 - ((earth.r + earth.c)*10)/8;
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
             // before we do anything (or it's super super urgent)
-            int numberUnits = nWorkers + nRangers + nMages + nWorkers;
-            if (enemyIsDead && round <= 700)
+            int numberUnits = nWorkers + nRangers + nMages + nWorkers - nInGarrison;
+            if (enemyIsDead && round <= goToMarsRound)
             {
                 if (numberUnits >= 15 && numberUnits/8 > nRockets)
                 {
@@ -1972,7 +1965,7 @@ int main()
                 }
                 else savingForRocket = false;
             }
-            else if (round >= 670)
+            else if (round >= goToMarsRound-20)
             {
                 if (numberUnits/10 > nRockets)
                 {
@@ -2012,13 +2005,14 @@ int main()
                     lastRocket = round;
                 }
             }
+            else printf("Factories: %d\n", nFactories);
         }
 
         // if we have no units left:
         // let's tell Mars to begin worker duplication
         if (myPlanet == Earth && (len == 0 || enemyIsDead)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
-        if (round >= 700 || enemyIsDead)
+        if (round >= goToMarsRound || enemyIsDead)
         {
             // compute distances to rockets
             bfsRocketDists(gc);
@@ -2030,7 +2024,7 @@ int main()
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-            if (myPlanet == Earth) tryToLoadIntoRocket(gc, unit, loc, (round >= 700 || enemyIsDead));
+            if (myPlanet == Earth) tryToLoadIntoRocket(gc, unit, loc, (round >= goToMarsRound || enemyIsDead));
             if (unitType == Worker)
             {
                 if (myPlanet == Mars) goto loopCleanup;
@@ -2162,21 +2156,13 @@ int main()
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
-                    if (structure && bc_Unit_structure_is_built(structure))
-                    {
-                    	if (dirAssigned[structureid] != 1)
-                    	{
-                    		dirAssigned[structureid]--;
-                    		assignedStructure.erase(id);
-                    	}
-                    }
+
                     // if this unit is not a permanent assignee:
                     // this unit no longer has an assigned structure
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
                     if (permanentAssignedStructure.find(id) == permanentAssignedStructure.end())
                     {
                     #endif
-                        // printf("unassigned %d from %d\n", id, assignedStructure[id]);
                         assignedStructure.erase(id);
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
                     }
@@ -2194,7 +2180,8 @@ int main()
                             reqAssignees.erase(structureid);
                             assignedStructure.erase(id);
                             permanentAssignedStructure.erase(id);
-                     
+                            createBlueprint(gc, unit, id, req,
+                                            permanentAssignedDirection[id], permanentAssignedType[id]);
                         }
 
                         // We know it must have been completely built
@@ -2409,6 +2396,9 @@ int main()
 
                     // knights : mages : rangers
                     vector<int> ratioKMR = {3, 5, 7};
+                    if (round < 425) ratioKMR = {1, 2, 8};
+                    else if (round < 525) ratioKMR = {1, 3, 8};
+                    else if (round < 625) ratioKMR = {2, 4, 7};
                     int mnDist = getRatioDistance({nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
@@ -2423,7 +2413,7 @@ int main()
                         mnDist = getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR);
                         type = Ranger;
                     }
-
+                    if (round < 350) type = Ranger;
                     if (!nWorkers) type = Worker;
                     if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                     {
@@ -2586,28 +2576,17 @@ int main()
         // also make sure no units are at the locations
         // Note that factories which are completed
         // won't have any assigned.
-        if (myPlanet == Earth) for (auto P : dirAssigned)
+        for (auto P : dirAssigned)
         {
+            if (myPlanet == Mars) continue;
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
+
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
-
-            if (bc_Unit_structure_is_built(structure)
-            #if USE_PERMANENTLY_ASSIGNED_WORKERS
-                && bc_Unit_health(structure) > 250
-            #endif
-                )
-            {
-                delete_bc_Unit(structure);
-                continue;
-            }
-
-            // printf("assigning workers to %d\n", structureid);
-
             bc_Location *loc = bc_Unit_location(structure);
             bc_MapLocation *mapLoc = bc_Location_map_location(loc);
 
-            if (numAssigned < reqAssignees[structureid] && (!bc_Unit_structure_is_built(structure) || !numAssigned))
+            if (numAssigned < reqAssignees[structureid])
             {
                 // first let's BFS to try and see if we can steal us some workers
                 // we'll only take workers that are reasonably close to our position
@@ -2710,9 +2689,9 @@ int main()
                         if (bc_MapLocation_is_adjacent_to(structureAdj[d], structureAdj[j]))
                         {
                             bc_Direction dir = bc_MapLocation_direction_to(structureAdj[j], structureAdj[d]);
-                            if (bc_GameController_can_replicate(gc, workerid[j], dir) && numAssigned == 1) {
+                            if (bc_GameController_can_replicate(gc, workerid[j], dir)) {
                                 bc_GameController_replicate(gc, workerid[j], dir);
-                                printf("Replicated because there were no nearby\n");
+
                                 // assign the new one to the structure
                                 bc_Unit *newUnit = bc_GameController_sense_unit_at_location(gc, structureAdj[d]);
                                 uint16_t newid = bc_Unit_id(newUnit);
@@ -2743,7 +2722,7 @@ int main()
         // (so that they can replicate around the factory later.)
         // it might be a bug that the workers don't replicate
         // for factory production on round 1, but this is an easy workaround.
-        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights); // mines karbonite on earth
+        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
