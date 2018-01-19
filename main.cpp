@@ -1767,20 +1767,20 @@ int main()
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
-            printf("%d\n", bc_GameController_queue_research(gc, Rocket)); //100
-            bc_GameController_queue_research(gc, Ranger); // 25  125
-            bc_GameController_queue_research(gc, Worker); // 25  150
-            bc_GameController_queue_research(gc, Ranger); // 100 250
-            bc_GameController_queue_research(gc, Mage); // 25    275
-            bc_GameController_queue_research(gc, Mage); // 75    350
-            bc_GameController_queue_research(gc, Knight); // 25  375
-            bc_GameController_queue_research(gc, Knight); // 75  450
-            bc_GameController_queue_research(gc, Knight); // 100 550
-            bc_GameController_queue_research(gc, Mage); // 75    625
-            bc_GameController_queue_research(gc, Worker); // 75  700
-            bc_GameController_queue_research(gc, Worker); // 75  775
-            bc_GameController_queue_research(gc, Worker); // 75  850
-            bc_GameController_queue_research(gc, Rocket); // 100  950    This is literally useless but whatever
+            bc_GameController_queue_research(gc, Ranger); // 25  25
+            bc_GameController_queue_research(gc, Worker); // 25  50
+            printf("%d\n", bc_GameController_queue_research(gc, Rocket)); // 50 100
+            bc_GameController_queue_research(gc, Ranger); // 100 200
+            bc_GameController_queue_research(gc, Mage); // 25    225
+            bc_GameController_queue_research(gc, Mage); // 75    300
+            bc_GameController_queue_research(gc, Knight); // 25  325
+            bc_GameController_queue_research(gc, Knight); // 75  400
+            bc_GameController_queue_research(gc, Knight); // 100 500
+            bc_GameController_queue_research(gc, Mage); // 75    575
+            bc_GameController_queue_research(gc, Worker); // 75  650
+            bc_GameController_queue_research(gc, Worker); // 75  525
+            bc_GameController_queue_research(gc, Worker); // 75  800
+            bc_GameController_queue_research(gc, Rocket); // 100  900    This is literally useless but whatever
         }
         if (!enemyIsDead && myPlanet == Earth && round % 2 == 0)
         {
