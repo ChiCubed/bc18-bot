@@ -1538,7 +1538,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             {
                 if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
                 else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 3) continue;
+                else if (unitType == Ranger && numRangersInRocket[rocketId] == 6) continue;
                 else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
@@ -1766,12 +1766,12 @@ int main()
         {
             printf("Trying to queue research... status: ");
             printf("%d\n", bc_GameController_queue_research(gc, Rocket)); //100
-            bc_GameController_queue_research(gc, Mage); // 25    125
-            bc_GameController_queue_research(gc, Ranger); // 25  150
-            bc_GameController_queue_research(gc, Worker); // 25  175
-            bc_GameController_queue_research(gc, Knight); // 25  200
-            bc_GameController_queue_research(gc, Mage); // 75    275
-            bc_GameController_queue_research(gc, Ranger); // 100 375
+            bc_GameController_queue_research(gc, Ranger); // 25  125
+            bc_GameController_queue_research(gc, Worker); // 25  150
+            bc_GameController_queue_research(gc, Ranger); // 100 250
+            bc_GameController_queue_research(gc, Mage); // 25    275
+            bc_GameController_queue_research(gc, Mage); // 75    350
+            bc_GameController_queue_research(gc, Knight); // 25  375
             bc_GameController_queue_research(gc, Knight); // 75  450
             bc_GameController_queue_research(gc, Knight); // 100 550
             bc_GameController_queue_research(gc, Mage); // 75    625
@@ -1845,13 +1845,15 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
-
-            if (unitType == Ranger) nRangers++;
+            bc_Location* loc = bc_Unit_location(unit);
+            if (bc_Location_is_in_garrison(loc) && unitType != Worker) nInGarrison++;
+            delete_bc_Location(loc);
+            if (unitType == Ranger) nRangers++; 
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
             if (unitType == Factory)
@@ -1935,13 +1937,14 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= 685) || enemyIsDead) && !savingForFactory)
+        int goToMarsRound = 750 - ((earth.r + earth.c)*10)/8;
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
             // before we do anything (or it's super super urgent)
-            int numberUnits = nWorkers + nRangers + nMages + nWorkers;
-            if (enemyIsDead && round <= 700)
+            int numberUnits = nWorkers + nRangers + nMages + nWorkers - nInGarrison;
+            if (enemyIsDead && round <= goToMarsRound)
             {
                 if (numberUnits >= 15 && numberUnits/8 > nRockets)
                 {
@@ -1962,7 +1965,7 @@ int main()
                 }
                 else savingForRocket = false;
             }
-            else if (round >= 685)
+            else if (round >= goToMarsRound-20)
             {
                 if (numberUnits/10 > nRockets)
                 {
@@ -2002,13 +2005,14 @@ int main()
                     lastRocket = round;
                 }
             }
+            else printf("Factories: %d\n", nFactories);
         }
 
         // if we have no units left:
         // let's tell Mars to begin worker duplication
         if (myPlanet == Earth && (len == 0 || enemyIsDead)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
-        if (round >= 700 || enemyIsDead)
+        if (round >= goToMarsRound || enemyIsDead)
         {
             // compute distances to rockets
             bfsRocketDists(gc);
@@ -2020,7 +2024,7 @@ int main()
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
             bc_Location* loc = bc_Unit_location(unit);
-            if (myPlanet == Earth) tryToLoadIntoRocket(gc, unit, loc, (round >= 700 || enemyIsDead));
+            if (myPlanet == Earth) tryToLoadIntoRocket(gc, unit, loc, (round >= goToMarsRound || enemyIsDead));
             if (unitType == Worker)
             {
                 if (myPlanet == Mars) goto loopCleanup;
@@ -2392,6 +2396,9 @@ int main()
 
                     // knights : mages : rangers
                     vector<int> ratioKMR = {3, 5, 7};
+                    if (round < 425) ratioKMR = {1, 2, 8};
+                    else if (round < 525) ratioKMR = {1, 3, 8};
+                    else if (round < 625) ratioKMR = {2, 4, 7};
                     int mnDist = getRatioDistance({nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
@@ -2406,7 +2413,7 @@ int main()
                         mnDist = getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR);
                         type = Ranger;
                     }
-
+                    if (round < 350) type = Ranger;
                     if (!nWorkers) type = Worker;
                     if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                     {
