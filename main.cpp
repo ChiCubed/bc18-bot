@@ -189,12 +189,13 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             { 
                 if (!mars[i][j]) 
                 {
-                    findcomps(i, j, i*c+j);
-                    mnInAComp = min(mnInAComp, rocketsInComp[i*c+j]);
+                    findcomps(i, j, i*r+j);
+                    if (comp[i][j] != i*r+j) continue;
+                    mnInAComp = min(mnInAComp, rocketsInComp[i*r+j]);
                 }
             }
         }
-        pair<pair<int, int>, pair<int, int> > best = mp(mp(0, 0), mp(0, 0));
+        pair<pair<int, int>, pair<int, int> > best = mp(mp(-1, 0), mp(0, 0));
         for (int i = 0; i < c; i++)
         {
             for (int j = 0; j < r; j++)
@@ -2209,7 +2210,7 @@ int main()
             {
                 bool goingToRocket = false;
 
-                if ((round >= 700 || enemyIsDead) && myPlanet == Earth)
+                if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
                 {
                     // PANIC PANIC PANIC
                     // We've got to get to Mars.
@@ -2224,7 +2225,7 @@ int main()
 
                         // Check that the distance from the nearest factory is close enough.
                         // Note: this is approximate, it doesn't really matter
-                        if (distToRocket[x][y] <= ((749 - round) * 2) / 3)
+                        //if (distToRocket[x][y] <= ((749 - round) * 2) / 3)
                         // note: doesn't handle healers at the moment
                         {
                             // Let's move
@@ -2260,6 +2261,7 @@ int main()
                         mars.updateKarboniteAmount(gc);
                         pair<int, int> landingLocPair = mars.optimalsquare(round);
                         bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
+                        printf("%d %d\n", landingLocPair.first, landingLocPair.second);
                         if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
                         {
                             printf("Launching. . .  %d\n", len);
