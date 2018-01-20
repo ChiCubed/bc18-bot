@@ -406,8 +406,8 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
             }
         }
     }
-    int amWorkers = totalUnits/7;
-    amWorkers = min(amWorkers, 8);
+    int amWorkers = totalUnits/10;
+    amWorkers = min(amWorkers + 6, 14);
     if (canMove.size() < amWorkers) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -2619,7 +2619,7 @@ int main()
                 while (Q.size())
                 {
                     tie(x, y) = Q.front(); Q.pop();
-                    if (dist[x][y] > 15) break;
+                    if (dist[x][y] > 6) break;
                     if (numAssigned >= reqAssignees[structureid]) break;
 
                     if (earth.earth[x][y]) continue;
