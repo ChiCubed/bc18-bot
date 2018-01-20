@@ -239,6 +239,7 @@ struct EarthSTRUCT //contains a more readable map of earth
     int karbonite[60][60]; // number of karbonite at each square at some time
     int seen[60][60], upto, dis[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
     set<pair<int, int> > taken;
+    int amKarbonite;
     void init(bc_GameController* gc)
     {
         bc_Planet bc_Planet_earth = Earth;
@@ -263,6 +264,7 @@ struct EarthSTRUCT //contains a more readable map of earth
     void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
     { // I think this only has karbonite within the viewable range ......... rip.....
         bc_MapLocation* loc;
+        amKarbonite = 0;
         for (int i = 0; i < c; i++)
         {
             for (int j = 0; j < r; j++)
@@ -270,6 +272,7 @@ struct EarthSTRUCT //contains a more readable map of earth
                 loc = new_bc_MapLocation(Earth, i, j);
                 karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
                 delete_bc_MapLocation(loc);
+                if (karbonite[i][j]) amKarbonite++;
             }
         }
     }
@@ -366,7 +369,8 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
+int mxWorkersOnEarth = 14;
+void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
     earth.taken.clear();
     earth.updateKarboniteAmount(gc);
@@ -404,11 +408,20 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
                 if (true || bc_GameController_is_move_ready(gc, id)) canMove.push_back(unit); // consider all workers, rather than the ones that can move
                 else delete_bc_Unit(unit);
             }
+            else delete_bc_Unit(unit);
         }
+        else delete_bc_Unit(unit);
     }
     int amWorkers = totalUnits/10;
-    amWorkers = min(amWorkers + 6, 14);
-    if (canMove.size() < amWorkers) // not enough workers...
+    amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
+    bool shouldReplicate = true;
+    if (round > 150)
+    {
+        // if we are dying;
+        if (totalUnits < canMove.size()) shouldReplicate = false;
+        mxWorkersOnEarth = min(14, earth.amKarbonite);
+    }
+    if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
         // we can duplicate even those workers
@@ -877,6 +890,24 @@ struct RangerStrat
         delete_bc_MapLocation(loc);
         return false;
     }
+    int enemyhealth(int x, int y)
+    {
+        bc_MapLocation* loc = new_bc_MapLocation(myPlanet, x, y);
+        if (bc_GameController_has_unit_at_location(gc, loc))
+        {
+            bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
+            if (bc_Unit_team(unit) != myTeam)
+            {
+                int health = bc_Unit_health(unit);
+                delete_bc_MapLocation(loc);
+                delete_bc_Unit(unit);
+                return health;
+            }
+            delete_bc_Unit(unit);
+        }
+        delete_bc_MapLocation(loc);
+        return 999;
+    }
     bool enemytype(int x, int y, bc_UnitType type)
     {
         bc_MapLocation* loc = new_bc_MapLocation(myPlanet, x, y);
@@ -987,7 +1018,7 @@ struct RangerStrat
         random_shuffle(good.begin(), good.end());
         return good;
     }
-    pair<int, int> storeLoc[60][60][12];
+    vector<pair<int, int> > storeLoc[60][60][12];
     vector<pair<pair<int, int>, int> > distances;
     vector<pair<pair<int, int>, int> > mageDistances, knightDistances;
     void pushDistances()
@@ -1065,12 +1096,12 @@ struct RangerStrat
         {
             for (int j = 0; j < r; j++)
             {
-                pair<int, int> curr = mp(-1, -1);
+                vector<pair<int, int> > curr;
                 for (int k = j; k < 11+j; k++)
                 {
                     if (hasEnemy[i][k])
                     {
-                        curr = mp(i, k);
+                        curr.emb(i, j);
                     }
                     storeLoc[i][j][k-j] = curr;
                 }
@@ -1207,8 +1238,7 @@ struct RangerStrat
         bool attacked = false;
         if (bc_GameController_is_attack_ready(gc, id))
         {
-            pair<int, int> target = mp(-1, -1);
-            pair<int, int> workerTarget = mp(-1, -1);
+            pair<int, pair<int, int> > target = mp(999, mp(999, 999));
             if (type == Ranger)
             {
                 for (auto a : distances)
@@ -1224,61 +1254,30 @@ struct RangerStrat
                         j = 0;
                     }
                     if (sz < 0) continue;
-                    pair<int, int> canAttack = storeLoc[i][j][sz];
-                    if (dontAttackWorkers)
+                    for (auto a : storeLoc[i][j][sz])
                     {
-                        if (enemytype(i, j, Worker))
-                        {
-                            if (workerTarget.first == -1) workerTarget = canAttack;
-                            else if (rand()%3 == 0) workerTarget = canAttack;
-                        }
-                        else
-                        {
-                            if (target.first == -1) target = canAttack;
-                            else if (rand()%3 == 0) target = canAttack;
-                        }
-                    }
-                    else
-                    {
-                        if (canAttack.first != -1)
-                        {
-                            if (target.first == -1) target = canAttack;
-                            else if (rand()%3 == 0) target = canAttack;
-                        }
+                        int health = enemyhealth(a.first, a.second);
+                        target = min(target, mp(health, a));
                     }
                 }
             }
             else printf("WRONG TYPE\n");
-            if (target.first != -1)
+            if (target.second.first != 999)
             {
-                int enemyid = enemy(target.first, target.second);
+                int enemyid = enemy(target.second.first, target.second.second);
                 if (enemyid)
                 {
                     enemyid--;
                   //  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
                     if (bc_GameController_can_attack(gc, id, enemyid))
                     {   
+                        printf("Attacked player with %d\n health\n", target.first);
                         attacked = true;
                         bc_GameController_attack(gc, id, enemyid);
                     }     
                     else printf("Error: Can't attack\n");
                 }
-                else printf("Enemy has already been killed\n");
-            }
-            if (workerTarget.first != -1)
-            {
-                int enemyid = enemy(workerTarget.first, workerTarget.second);
-                if (enemyid)
-                {
-                    enemyid--;
-                    if (bc_GameController_can_attack(gc, id, enemyid))
-                    {   
-                        attacked = true;
-                        bc_GameController_attack(gc, id, enemyid);
-                    }     
-                    else printf("Error: Can't attack\n");
-                }
-                else printf("Enemy has already been killed\n");
+                else printf("Enemy has already been killed - what a rip\n");
             }
         }
         return attacked;
@@ -1339,7 +1338,7 @@ struct RangerStrat
         int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        vector<pair<int, int> > targets;
+        pair<int, pair<int, int> > target = mp(999, mp(-1, -1));
         for (auto a : knightDistances)
         {
             int i = x+a.first.first;
@@ -1353,29 +1352,27 @@ struct RangerStrat
                 j = 0;
             }
             if (sz < 0) continue;
-            pair<int, int> canAttack = storeLoc[i][j][sz];
-            if (canAttack.first != -1)
+            for (auto a : storeLoc[i][j][sz])
             {
-                targets.pb(canAttack);
+                int health = enemyhealth(a.first, a.second);
+                target = min(target, mp(health, a));
             }
         }
-        random_shuffle(targets.begin(), targets.end());
-        for (int i = 0; i < targets.size(); i++)
+        if (target.first != 999)
         {
-            pair<int, int> target = targets[i];
-            int enemyid = enemy(target.first, target.second);
+            int enemyid = enemy(target.second.first, target.second.second);
             if (enemyid)
             {
                 enemyid--;
                 //  printf("%d\n", (target.first-x)*(target.first-x) + (target.second-y)*(target.second-y));
-                if (bc_GameController_can_javelin(gc, id, enemyid))
+                if (bc_GameController_can_attack(gc, id, enemyid))
                 {   
                     printf("Javelin attack!\n");
-                    bc_GameController_javelin(gc, id, enemyid);
-                    break;
+                    bc_GameController_attack(gc, id, enemyid);
                 }     
-                else printf("Error: Can't javelin\n");
+                else printf("Error: Can't Javelin\n");
             }
+            else printf("Enemy has already been killed (Javelin)\n");
         }
     }    
 };
@@ -2629,11 +2626,6 @@ int main()
                     if (unitAtLoc)
                     {
                         bc_UnitType typeAtLoc = bc_Unit_unit_type(unitAtLoc);
-                        if ((typeAtLoc == Factory || typeAtLoc == Rocket) && (x ^ ox || y ^ oy))
-                        {
-                            delete_bc_Unit(unitAtLoc);
-                            continue;
-                        }
                         if (typeAtLoc == Worker && bc_Unit_team(unitAtLoc) == currTeam)
                         {
                             uint16_t unitid = bc_Unit_id(unitAtLoc);
@@ -2645,6 +2637,10 @@ int main()
                             }
                         }
                         delete_bc_Unit(unitAtLoc);
+                        if (x ^ ox || y ^ oy)
+                        {
+                            continue;
+                        }
                     }
 
                     for (int d = 0; d < 8; ++d)
@@ -2723,18 +2719,12 @@ int main()
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
-        if (myPlanet == Earth) earth.updateKarboniteAmount(gc);
-        // note:
-        // the reason for the (round > 1)
-        // is that we want to get our first factory built
-        // as quickly as possible, which means
-        // ensuring no units replicate on round 1.
-        // (so that they can replicate around the factory later.)
-        // it might be a bug that the workers don't replicate
-        // for factory production on round 1, but this is an easy workaround.
-        if (round > 1 && myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights); // mines karbonite on earth
         delete_bc_VecUnit(units);
 
+
+        if (myPlanet == Earth) earth.updateKarboniteAmount(gc);
+        
+        if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights, round); // mines karbonite on earth
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
 
         fflush(stdout);
