@@ -1540,7 +1540,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             {
                 if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
                 else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 6) continue;
+                else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
                 else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
