@@ -407,7 +407,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits)
         }
     }
     int amWorkers = totalUnits/7;
-    amWorkers = min(amWorkers, 5);
+    amWorkers = min(amWorkers, 8);
     if (canMove.size() < amWorkers) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -1576,7 +1576,6 @@ void bfsRocketDists(bc_GameController* gc)
     bool seen[60][60];
     int rocketThatLed[60][60];
     map<int, int> rocketThatLedMap;
-    int numLeft = 0;
     for (int i = 0; i < 60; ++i) for (int j = 0; j < 60; ++j)
     {
         distToRocket[i][j] = 2e9;
@@ -1620,7 +1619,6 @@ void bfsRocketDists(bc_GameController* gc)
             int id = bc_Unit_id(unit);
             rocketThatLed[x][y] = id;
             rocketThatLedMap[id] = 0;
-            numLeft++;
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
@@ -1635,7 +1633,7 @@ void bfsRocketDists(bc_GameController* gc)
         tie(x, y) = Q.front(); Q.pop();
 
         if (earth.earth[x][y]) continue; // unpassable
-        if (rocketThatLedMap[rocketThatLed[x][y]] >= 8 && !numLeft) continue;
+        if (rocketThatLedMap[rocketThatLed[x][y]] >= 8) continue;
         for (int d = 0; d < 8; ++d)
         {
             bc_Direction dir = (bc_Direction)d;
@@ -1644,11 +1642,11 @@ void bfsRocketDists(bc_GameController* gc)
             if (x + dx < 0 || x + dx >= earth.c ||
                 y + dy < 0 || y + dy >= earth.r) continue;
             if (seen[x+dx][y+dy]) continue;
+            if (dealWithRangers.enemy(x+dx, y+dy)) continue;
             rocketThatLed[x+dx][y+dy] = rocketThatLed[x][y];
             distToRocket[x+dx][y+dy] = distToRocket[x][y] + 1;
             directionFromRocket[x+dx][y+dy] = dir;
             if (dealWithRangers.friendly(x+dx, y+dy)) rocketThatLedMap[rocketThatLed[x][y]]++;
-            if (rocketThatLedMap[rocketThatLed[x][y]] == 8) numLeft--;
             seen[x+dx][y+dy] = 1;
             Q.push({x+dx, y+dy});
         }
@@ -1940,7 +1938,7 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        int goToMarsRound = 750 - ((earth.r + earth.c)*10)/8;
+        int goToMarsRound = 750 - ((earth.r + earth.c));
         if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory)
         {
             // we should make a rocket
@@ -2034,6 +2032,7 @@ int main()
                 if (assignedStructure.find(id) != assignedStructure.end() &&
                     bc_Location_is_on_map(loc))
                 {
+
                     bc_MapLocation* mapLoc = bc_Location_map_location(loc);
 
                     uint16_t structureid = assignedStructure[id];
@@ -2159,6 +2158,7 @@ int main()
                         delete_bc_MapLocation(mapLoc);
                         goto loopCleanup; // i'm sorry
                     }
+                    else assignedStructure.erase(id);
 
                     // if this unit is not a permanent assignee:
                     // this unit no longer has an assigned structure
@@ -2225,7 +2225,7 @@ int main()
 
                         // Check that the distance from the nearest factory is close enough.
                         // Note: this is approximate, it doesn't really matter
-                        //if (distToRocket[x][y] <= ((749 - round) * 2) / 3)
+                        if (distToRocket[x][y] <= 1e9)
                         // note: doesn't handle healers at the moment
                         {
                             // Let's move
@@ -2368,6 +2368,7 @@ int main()
                                             uint16_t newid = bc_Unit_id(newUnit);
 
                                             assignedStructure[newid] = id;
+                                            printf("Assigning\n");
                                             permanentAssignedStructure[newid] = id;
                                             permanentAssignedType[newid] = Factory;
                                             permanentAssignedDirection[newid] = bc_Direction_opposite((bc_Direction)j);
@@ -2585,8 +2586,12 @@ int main()
             if (myPlanet == Mars) continue;
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
-
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
+            if (bc_Unit_structure_is_built(structure))
+            {
+                delete_bc_Unit(structure);
+                continue;
+            }
             bc_Location *loc = bc_Unit_location(structure);
             bc_MapLocation *mapLoc = bc_Location_map_location(loc);
 
@@ -2634,6 +2639,7 @@ int main()
                             uint16_t unitid = bc_Unit_id(unitAtLoc);
                             if (assignedStructure.find(unitid) == assignedStructure.end())
                             {
+                                printf("assigning\n");
                                 assignedStructure[unitid] = structureid;
                                 numAssigned++;
                             }
