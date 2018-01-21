@@ -1953,7 +1953,7 @@ int main()
         }
         else savingForFactory = false;
         int goToMarsRound = 750 - ((earth.r + earth.c));
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory)
+        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
