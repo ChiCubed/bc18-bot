@@ -19,6 +19,7 @@ bool earthIsDead = false;
 bool enemyIsDead = false;
 
 bool opponentExists;
+int lastRocket, savingForRocket, savingForFactory;
 bool check_errors() 
 {
     if (bc_has_err()) 
@@ -65,7 +66,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     int mars[60][60]; // 0 = passable, 1 = unpassable
     int karbonite[60][60]; // number of karbonite at each square at some time
     int seen[60][60], upto, dis[60][60], comp[60][60], compsize[3000], hasrocket[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
-    int rocketsInComp[3000], mnInAComp, workersInComp[3000];
+    int rocketsInComp[3000], workersInComp[3000];
     queue<pair<int, pair<int, int> > > takenSquaresQueue;
     set<pair<int, int> > taken;
     unordered_set<int> landedRockets;
@@ -182,7 +183,7 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
         // A (and possibly also B/C) could be dependent on total available karbonite/average comp size/whatever
         int K = 5; //dist to consider for karbonite
         upto++;
-        mnInAComp = 999999999;
+        int mxCompSize = 0;
         for (int i = 0; i < c; i++)
         {
             for (int j = 0; j < r; j++) 
@@ -191,18 +192,19 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
                 {
                     findcomps(i, j, i*r+j);
                     if (comp[i][j] != i*r+j) continue;
-                    mnInAComp = min(mnInAComp, rocketsInComp[i*r+j]);
+                    mxCompSize = max(mxCompSize, compsize[i*r+j]);
                 }
             }
         }
-        pair<pair<int, int>, pair<int, int> > best = mp(mp(-1, 0), mp(0, 0));
+        pair<pair<int, int>, pair<int, int> > best = mp(mp(-999999999, 0), mp(0, 0));
         for (int i = 0; i < c; i++)
         {
             for (int j = 0; j < r; j++)
             {   
-                if (mars[i][j] || hasrocket[i][j] || rocketsInComp[comp[i][j]] != mnInAComp) continue;
+                if (mars[i][j] || hasrocket[i][j] || compsize[comp[i][j]]*3 < mxCompSize) continue;
                 int nearbykar = bfs(i, j, K);
-                int compsz = compsize[comp[i][j]];
+                int compsz = rocketsInComp[comp[i][j]]/compsize[comp[i][j]];
+                compsz = -compsz;
                 int numnei = numneighbours(i, j);
                 int rating = A*nearbykar + B*compsz + C*numnei;
                 best = max(best, mp(mp(rating, rand()), mp(i, j))); //rand is so that it picks randomly among ties, rather than picking highest x and y
@@ -412,15 +414,15 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         }
         else delete_bc_Unit(unit);
     }
-    int amWorkers = totalUnits/10;
-    amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
+    int amWorkers = totalUnits/20;
     bool shouldReplicate = true;
-    if (round > 150)
+    if (round > 200)
     {
         // if we are dying;
-        if (totalUnits < canMove.size()) shouldReplicate = false;
+        if (totalUnits < (canMove.size()/2)-2 || savingForRocket) shouldReplicate = false;
         mxWorkersOnEarth = min(14, earth.amKarbonite);
     }
+    amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -1573,7 +1575,6 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
         delete_bc_VecUnit(vecUnits);
     }
 }
-int lastRocket, savingForRocket, savingForFactory;
 
 
 // for loading into rockets post round 700 ish
@@ -2024,7 +2025,7 @@ int main()
 
         // if we have no units left:
         // let's tell Mars to begin worker duplication
-        if (myPlanet == Earth && (len == 0 || enemyIsDead)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
+        if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
         if (round >= goToMarsRound || enemyIsDead)
         {
@@ -2267,7 +2268,7 @@ int main()
                     bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
                     int len = bc_VecUnitID_len(garrisonUnits);
                     delete_bc_VecUnitID(garrisonUnits);
-                    if (round == 749 || len == bc_Unit_structure_max_capacity(unit) || bc_Unit_health(unit) <= 130)
+                    if (round == 749 || len == bc_Unit_structure_max_capacity(unit) || bc_Unit_health(unit) <= 140)
                     {
                         // lets launch the rocket
                         mars.updateKarboniteAmount(gc);
@@ -2646,7 +2647,6 @@ int main()
                             uint16_t unitid = bc_Unit_id(unitAtLoc);
                             if (assignedStructure.find(unitid) == assignedStructure.end())
                             {
-                                printf("assigning\n");
                                 assignedStructure[unitid] = structureid;
                                 numAssigned++;
                             }
