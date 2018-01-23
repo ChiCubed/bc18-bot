@@ -8,9 +8,14 @@ using namespace std;
 #include <bc.h>
 #undef this
 
+// good practices
+#include "voronoi.cpp"
+
 
 
 #define USE_PERMANENTLY_ASSIGNED_WORKERS 0
+
+#define CLOSENESS_FACTOR 0
 
 
 
@@ -306,6 +311,15 @@ map<uint16_t, int> reqAssignees;
 
 // initial distance to an enemy unit
 // int distToInitialEnemy[60][60];
+
+// initial enemy locations
+vector<pair<int, int>> initialEnemies;
+
+// pairs of {distance to enemy, unit}
+// stores which units are too close to the enemy
+vector<pair<int, bc_Unit*>> tooClose;
+
+vector<pair<int, int>> targetEnemies;
 
 // returns true if successful
 // the main worker will become
@@ -1092,53 +1106,7 @@ struct RangerStrat
             }
         }
     }
-    vector<int> backTracking[60][60];
-    void doBfs()
-    {
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++) backTracking[i][j].clear();
-        }
-        upto++;
-        queue<pair<int, int> > q;
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++)
-            {
-                if (hasEnemy[i][j])
-                {
-                    seen[i][j] = upto;
-                    dis[i][j] = 0;
-                    q.emplace(i, j);
-                }
-            }
-        }
-        while (!q.empty())
-        {
-            int x = q.front().first;
-            int y = q.front().second;
-            q.pop();
-            for (int l = 0; l < 8; l++)
-            {
-                int i = x + bc_Direction_dx((bc_Direction)l);
-                int j = y + bc_Direction_dy((bc_Direction)l);
-                if (existsOnMapNotFriendly(i, j) && !hasEnemy[i][j])
-                {
-                    if (seen[i][j] != upto)
-                    {
-                        seen[i][j] = upto;
-                        if (!friendly(i, j)) q.emplace(i, j);
-                        dis[i][j] = dis[x][y]+1;
-                    }
-                    if (dis[i][j] == dis[x][y]+1)
-                    {
-                        int op = (int)bc_Direction_opposite((bc_Direction)l);
-                        backTracking[i][j].pb(op);
-                    }
-                }
-            }
-        }
-    }
+    
     bool mageAttack(bc_GameController* gc, bc_Unit* unit, int x, int y, int id)
     {
         bool attacked = false;
@@ -1222,6 +1190,26 @@ struct RangerStrat
         bool attacked = false;
         if (bc_GameController_is_attack_ready(gc, id))
         {
+            // Note:
+            // First we check if we can just attack
+            // the regular nearest enemy.
+            // If not, let's do this search
+            // and thus attack a semi-arbitrary
+            // nearest enemy.
+            pair<int, int> nearestEnemyLoc = Voronoi::closestEnemy[x][y];
+            int enemyid = enemy(nearestEnemyLoc.first, nearestEnemyLoc.second);
+            if (enemyid)
+            {
+                enemyid--;
+                if (bc_GameController_can_attack(gc, id, enemyid))
+                {
+                    attacked = true;
+                    bc_GameController_attack(gc, id, enemyid);
+                    return attacked;
+                }
+            }
+
+
             pair<int, int> target = mp(-1, -1);
             pair<int, int> workerTarget = mp(-1, -1);
             if (type == Ranger)
@@ -1312,28 +1300,13 @@ struct RangerStrat
         if (unitType == Ranger) attacked = rangerAttack(gc, unit, x, y, id);
         else if (unitType == Mage) attacked = mageAttack(gc, unit, x, y, id);
         if (!bc_GameController_is_move_ready(gc, id) || !allowMove) return;
+
+        // NOTE:
+        // Swarm dynamic takes over automatically and sets allowMove to false
         vector<int> good = findGood(gc, id, x, y);
         bool isGood[9];
         fill_n(isGood, 9, false);
         for (int a : good) isGood[a] = true;
-        if (!attacked)
-        {
-        //  printf("moving\n");
-            random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
-            for (int a: backTracking[x][y])
-            {
-                if (isGood[a])
-                {
-                    // lets go to a;
-                    if (bc_GameController_can_move(gc, id, (bc_Direction)a))
-                    {
-                        bc_GameController_move_robot(gc, id, (bc_Direction)a);
-                        return;
-                    }
-                }
-            }
-        }
-        if (attacked && isGood[8]) return; // if we attacked someone, and we can stay where we are, lets do that.
         // otherwise, lets randomly move;
         int l = good[rand()%good.size()];
         if (l != 8)
@@ -1554,10 +1527,10 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             }
             if (!gettingCloseToFlood)
             {
-                if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
-                else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
-                else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
+     //           if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
+       //         else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
+         //       else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
+           //     else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
             {
@@ -1582,7 +1555,7 @@ int distToRocket[60][60];
 bc_Direction directionFromRocket[60][60];
 
 
-void bfsRocketDists(bc_GameController* gc)
+void bfsRocketDists(bc_GameController* gc, int am = 8)
 {
     // Determine the distance of every square
     // from a rocket
@@ -1647,7 +1620,7 @@ void bfsRocketDists(bc_GameController* gc)
         tie(x, y) = Q.front(); Q.pop();
 
         if (earth.earth[x][y]) continue; // unpassable
-        if (rocketThatLedMap[rocketThatLed[x][y]] >= 8) continue;
+        if (rocketThatLedMap[rocketThatLed[x][y]] >= am) continue;
         for (int d = 0; d < 8; ++d)
         {
             bc_Direction dir = (bc_Direction)d;
@@ -1666,6 +1639,11 @@ void bfsRocketDists(bc_GameController* gc)
         }
     }
 }
+
+
+queue<pair<int, int>> unitMovementBFSQueue;
+bool unitMovementSeen[60][60];
+int unitMovementDist[60][60];
 
 
 int main() 
@@ -1771,12 +1749,37 @@ int main()
         }
     }
     */
+
+    bc_VecUnit* initUnits = bc_PlanetMap_initial_units_get(map);
+    int len = bc_VecUnit_len(initUnits);
+    for (int i = 0; i < len; ++i)
+    {
+        bc_Unit* unit = bc_VecUnit_index(initUnits, i);
+
+        bc_Team team = bc_Unit_team(unit);
+        if (team == enemyTeam)
+        {
+            bc_Location* loc = bc_Unit_location(unit);
+            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+            int x = bc_MapLocation_x_get(mapLoc);
+            int y = bc_MapLocation_y_get(mapLoc);
+            initialEnemies.push_back({x, y});
+
+            delete_bc_Location(loc);
+            delete_bc_MapLocation(mapLoc);
+        }
+
+        delete_bc_Unit(unit);
+    }
+    delete_bc_VecUnit(initUnits);
+
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
         printf("Round %d\n", round);
         dealWithRangers.preCompLoc();
-        dealWithRangers.doBfs();
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
@@ -2027,11 +2030,66 @@ int main()
         // let's tell Mars to begin worker duplication
         if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
-        if (round >= goToMarsRound || enemyIsDead)
+        if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
         {
             // compute distances to rockets
             bfsRocketDists(gc);
         }
+        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
+
+
+        // Let's calculate nearest enemies to each point
+        // using discount voronoi
+        // Let's not include workers because they don't do much
+
+        targetEnemies.clear();
+
+        if (round >= 100) {
+            bc_VecUnit* allUnits = bc_GameController_units(gc);
+            int allLen = bc_VecUnit_len(allUnits);
+            for (int i = 0; i < allLen; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(allUnits, i);
+                if (bc_Unit_team(unit) == enemyTeam && bc_Unit_unit_type(unit) != Worker)
+                {
+                    bc_Location* loc = bc_Unit_location(unit);
+                    if (!bc_Location_is_in_garrison(loc) &&
+                        !bc_Location_is_in_space(loc) &&
+                        bc_Location_is_on_planet(loc, myPlanet))
+                    {
+                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+                        int x = bc_MapLocation_x_get(mapLoc);
+                        int y = bc_MapLocation_y_get(mapLoc);
+                        targetEnemies.push_back({x, y});
+
+                        delete_bc_MapLocation(mapLoc);
+                    }
+                    delete_bc_Location(loc);
+                }
+                delete_bc_Unit(unit);
+            }
+            delete_bc_VecUnit(allUnits);
+
+            if (!targetEnemies.size())
+            {
+                // For now, let's add an arbitrary point to target.
+                // Let's use initial enemy unit locations.
+                if (myPlanet == Earth)
+                {
+                    targetEnemies = initialEnemies;
+                }
+                else
+                {
+              //      targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
+                }
+            }
+        }
+
+        if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
+ 
+
+        // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
 
         for (int i = 0; i < len; i++)
         {
@@ -2223,7 +2281,7 @@ int main()
             {
                 bool goingToRocket = false;
 
-                if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
+                if (/*(round >= goToMarsRound || enemyIsDead) &&*/ myPlanet == Earth)
                 {
                     // PANIC PANIC PANIC
                     // We've got to get to Mars.
@@ -2454,143 +2512,332 @@ int main()
                         }
                     }
                 }
-                else if (unitType == Knight)
+                else
                 {
-                    // if we are in a garrison or space:
-                    // wow, not much you can do now
-                    if (bc_Location_is_in_garrison(loc) ||
-                        bc_Location_is_in_space(loc)) goto loopCleanup;
-
-                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-                    bc_MapLocation* nearestEnemy;
-                    bc_Direction dir;
-                    tie(nearestEnemy, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, false);
-
-                    if (!goingToRocket)
+                    if (unitType == Knight)
                     {
-                        if (!nearestEnemy)
-                        {
-                            // Let's move in a random direction
-                            // (that we can move in) for now.
-                            vector<int> availableDir;
-                            for (int i = 0; i < 8; ++i)
-                            {
-                                if (bc_GameController_can_move(gc, id, (bc_Direction)i))
-                                {
-                                    availableDir.push_back(i);
-                                }
-                            }
-                            if (availableDir.size())
-                            {
-                                dir = (bc_Direction)availableDir[rand() % availableDir.size()];
-                            }
-                            else
-                            {
-                                dir = North; // we can't do anything
-                            }
-                        }
+                        // if we are in a garrison or space:
+                        // wow, not much you can do now
+                        if (bc_Location_is_in_garrison(loc) ||
+                            bc_Location_is_in_space(loc)) goto loopCleanup;
 
-                        if (nearestEnemy && bc_MapLocation_is_adjacent_to(mapLoc, nearestEnemy))
+                        if (!targetEnemies.size())
                         {
-                            // The knight is adjacent to the nearest enemy.
-                            // If it's diagonally adjacent,
-                            // we'll move in such a way as to make it
-                            // vertically or horizontally adjacent.
-                            if (dir == Northeast || dir == Southeast ||
-                                dir == Southwest || dir == Northwest)
+                            // The knight can do its normal enemy stuff
+                            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                            bc_MapLocation* nearestEnemy;
+                            bc_Direction dir;
+                            tie(nearestEnemy, dir) = findNearestEnemy(gc, currTeam, map, mapLoc, 50, false);
+
+                            if (!goingToRocket)
                             {
-                                if (bc_GameController_is_move_ready(gc, id))
+                                if (!nearestEnemy)
                                 {
-                                    // subtract 1 from dir:
-                                    // this'll get us to a position
-                                    // where we're adjacent to the enemy
-                                    dir = (bc_Direction)((int)dir - 1);
-                                    if (bc_GameController_can_move(gc, id, dir))
+                                    // Let's just not move.
+                                    dir = Center;
+                                }
+
+                                if (nearestEnemy && bc_MapLocation_is_adjacent_to(mapLoc, nearestEnemy))
+                                {
+                                    // The knight is adjacent to the nearest enemy.
+                                    // If it's diagonally adjacent,
+                                    // we'll move in such a way as to make it
+                                    // vertically or horizontally adjacent.
+
+                                    // NOTE: obsolete as knights now have
+                                    // 8-dir attack
+
+                                    if (dir == Northeast || dir == Southeast ||
+                                        dir == Southwest || dir == Northwest)
                                     {
-                                        bc_GameController_move_robot(gc, id, dir);
-                                    }
-                                    else
-                                    {
-                                        // try the other direction corresponding
-                                        // to the same diagonal
-                                        dir = (bc_Direction)(((int)dir + 2) % 8);
-                                        if (bc_GameController_can_move(gc, id, dir))
+                                        if (bc_GameController_is_move_ready(gc, id))
                                         {
-                                            bc_GameController_move_robot(gc, id, dir);
+                                            // subtract 1 from dir:
+                                            // this'll get us to a position
+                                            // where we're adjacent to the enemy
+                                            dir = (bc_Direction)((int)dir - 1);
+                                            if (bc_GameController_can_move(gc, id, dir))
+                                            {
+                                                bc_GameController_move_robot(gc, id, dir);
+                                            }
+                                            else
+                                            {
+                                                // try the other direction corresponding
+                                                // to the same diagonal
+                                                dir = (bc_Direction)(((int)dir + 2) % 8);
+                                                if (bc_GameController_can_move(gc, id, dir))
+                                                {
+                                                    bc_GameController_move_robot(gc, id, dir);
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                                else
+                                {
+                                    if (dir != Center &&
+                                        bc_GameController_can_move(gc, id, dir) &&
+                                        bc_GameController_is_move_ready(gc, id))
+                                    {
+                                        bc_GameController_move_robot(gc, id, dir);
+                                    }
+                                }
                             }
+
+                            if (nearestEnemy)
+                            {
+                                uint16_t enemyid = dealWithRangers.enemy(
+                                    bc_MapLocation_x_get(nearestEnemy),
+                                    bc_MapLocation_y_get(nearestEnemy)
+                                );
+
+                                if (enemyid)
+                                {
+                                    enemyid--;
+                                    if (bc_GameController_can_attack(gc, id, enemyid) &&
+                                        bc_GameController_is_attack_ready(gc, id))
+                                    {
+                                        bc_GameController_attack(gc, id, enemyid);
+                                    }
+                                }
+
+                                delete_bc_MapLocation(nearestEnemy);
+                            }
+                            delete_bc_MapLocation(mapLoc);
                         }
                         else
                         {
-                            if (bc_GameController_can_move(gc, id, dir) &&
-                                bc_GameController_is_move_ready(gc, id))
+                            // if we can attack the nearest enemy:
+                            // do it
+
+                            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                            int x = bc_MapLocation_x_get(mapLoc);
+                            int y = bc_MapLocation_y_get(mapLoc);
+                            delete_bc_MapLocation(mapLoc);
+
+                            pair<int, int> nearestEnemyLoc = Voronoi::closestEnemy[x][y];
+
+                            uint16_t enemyid = dealWithRangers.enemy(x, y);
+
+                            if (enemyid)
                             {
-                                bc_GameController_move_robot(gc, id, dir);
+                                enemyid--;
+                                if (bc_GameController_can_attack(gc, id, enemyid) &&
+                                    bc_GameController_is_attack_ready(gc, id))
+                                {
+                                    bc_GameController_attack(gc, id, enemyid);
+                                }
                             }
                         }
+                        if (bc_GameController_is_javelin_ready(gc, id)) dealWithRangers.doJavelinAttack(gc, unit);
                     }
-
-                    // if we can attack the nearest enemy:
-                    // do it
-                    // (note: for other units than Knight,
-                    //  the nearest enemy might not actually be
-                    //  the nearest enemy, so you'll have to handle,
-                    //  for instance, attacking other enemies
-                    //  that get in the way)
-                    if (nearestEnemy)
+                    else if (unitType == Ranger)
                     {
-                        bc_Unit* enemy = bc_GameController_sense_unit_at_location(gc, nearestEnemy);
-                        uint16_t enemyid = bc_Unit_id(enemy);
-                        if (bc_GameController_can_attack(gc, id, enemyid) &&
-                            bc_GameController_is_attack_ready(gc, id))
+                        if (!bc_Location_is_in_garrison(loc) && !bc_Location_is_in_space(loc))
                         {
-                            bc_GameController_attack(gc, id, enemyid);
+                            uint16_t id = bc_Unit_id(unit);
+                            dealWithRangers.findNearestEnemy(gc, unit, !goingToRocket && !targetEnemies.size());
                         }
-
-                        delete_bc_Unit(enemy);
                     }
-                    if (bc_GameController_is_javelin_ready(gc, id)) dealWithRangers.doJavelinAttack(gc, unit);
-                    delete_bc_MapLocation(mapLoc);
-                    if (nearestEnemy) delete_bc_MapLocation(nearestEnemy);
-                }
-                else if (unitType == Ranger)
-                {
-                    if (!bc_Location_is_in_garrison(loc) && !bc_Location_is_in_space(loc))
+                    // TODO:
+                    // We need some way of making sure that our
+                    // units don't prevent factories from being able
+                    // to unload.
+                    // Also mages don't care about friendly fire.
+                    else if (unitType == Mage)
                     {
-                        uint16_t id = bc_Unit_id(unit);
-                        dealWithRangers.findNearestEnemy(gc, unit, !goingToRocket);
-                    }
-                }
-                // TODO:
-                // We need some way of making sure that our
-                // units don't prevent factories from being able
-                // to unload.
-                // Also mages don't care about friendly fire.
-                else if (unitType == Mage)
-                {
-                    // if we are in a garrison or space:
-                    // wow, not much you can do now
-                    if (bc_Location_is_in_garrison(loc) ||
-                        bc_Location_is_in_space(loc)) goto loopCleanup;
+                        // if we are in a garrison or space:
+                        // wow, not much you can do now
+                        if (bc_Location_is_in_garrison(loc) ||
+                            bc_Location_is_in_space(loc)) goto loopCleanup;
 
-                    dealWithRangers.findNearestEnemy(gc, unit, !goingToRocket);
-                    
+                        dealWithRangers.findNearestEnemy(gc, unit, !goingToRocket && !targetEnemies.size());
+                        
+                    }
                 }
             }
 
             loopCleanup:
             if (unit)
             {
-                delete_bc_Unit(unit);
+                // Note: don't delete the unit yet,
+                // we need it later
+                // delete_bc_Unit(unit);
                 delete_bc_Location(loc);
             }
         }
+
+
+        // We want our units to swarm in towards the nearest enemy.
+        // We split them into two categories:
+        // units which are too close (by Euclidean distance)
+        // (and are not knights, because that'd be a bad idea to handle)
+        // and units which are far enough away.
+        // If units are knights, they're always far enough away.
+
+        // tooClose contains pairs of {distance to nearest enemy, unit}
+        if (targetEnemies.size())
+        {
+            tooClose.clear();
+            for (int i = 0; i < len; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(units, i);
+                bc_UnitType type = bc_Unit_unit_type(unit);
+                if (type != Knight && type != Worker)
+                {
+                    int attackRange = bc_Unit_attack_range(unit);
+                    bc_Location* loc = bc_Unit_location(unit);
+                    if (!bc_Location_is_in_garrison(loc) &&
+                        !bc_Location_is_in_space(loc) &&
+                        bc_Location_is_on_planet(loc, myPlanet))
+                    {
+                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+                        int x = bc_MapLocation_x_get(mapLoc);
+                        int y = bc_MapLocation_y_get(mapLoc);
+
+                        if (Voronoi::disToClosestEnemy[x][y] < attackRange - CLOSENESS_FACTOR)
+                        {
+                            tooClose.push_back({Voronoi::disToClosestEnemy[x][y], unit});
+                        }
+
+                        delete_bc_MapLocation(mapLoc);
+                    }
+                    delete_bc_Location(loc);
+                }
+            }
+
+            sort(tooClose.begin(), tooClose.end());
+            for (int i = tooClose.size(); i--; )
+            {
+                // Process the units by euclidean distance from enemy decreasing
+                // A simple heuristic to run away is to just move to a nearby square
+                // that does not increase euclidean distance,
+                // or not move if that square doesn't exist.
+                int currDist = tooClose[i].first;
+                bc_Unit* unit = tooClose[i].second;
+                uint16_t id = bc_Unit_id(unit);
+
+                if (!bc_GameController_is_move_ready(gc, id)) continue;
+
+                bc_Location* loc = bc_Unit_location(unit);
+                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                int x = bc_MapLocation_x_get(mapLoc);
+                int y = bc_MapLocation_y_get(mapLoc);
+
+                bc_Direction bestDir = Center;
+                for (int d = 0; d < 8; ++d)
+                {
+                    if (!bc_GameController_can_move(gc, id, (bc_Direction)d)) continue;
+
+                    int dx = bc_Direction_dx((bc_Direction)d);
+                    int dy = bc_Direction_dy((bc_Direction)d);
+
+                    if (Voronoi::disToClosestEnemy[x+dx][y+dy] >= currDist)
+                    {
+                        bestDir = (bc_Direction)d;
+                        currDist = Voronoi::disToClosestEnemy[x+dx][y+dy];
+                    }
+                }
+
+                delete_bc_MapLocation(mapLoc);
+                delete_bc_Location(loc);
+
+                if (bestDir == Center) continue;
+                bc_GameController_move_robot(gc, id, bestDir);
+            }
+
+            // clean up
+            for (int i = 0; i < len; ++i) delete_bc_Unit(bc_VecUnit_index(units, i));
+
+            // We need to BFS from enemies and thus process
+            // units (obviously those that aren't too close, or are knights)
+            // in order of BFS distance from the enemy.
+            // When we move, we move to any adjacent square with minimum (BFS)
+            // distance from the enemy that we can. We don't walk to a square
+            // if it's too close to the enemy, though (unless we're a knight).
+            // Hey would you look at that we have a list
+            // of enemies to BFS from in targetEnemies. Great
+            for (int i = 0; i < myPlanetC; ++i) for (int j = 0; j < myPlanetR; ++j) unitMovementSeen[i][j] = 0;
+
+            // We don't actually need to initialise unitMovementDist, so we won't
+            for (auto p : targetEnemies)
+            {
+                unitMovementBFSQueue.push(p);
+                unitMovementSeen[p.first][p.second] = 1;
+                unitMovementDist[p.first][p.second] = 0;
+            }
+
+            while (unitMovementBFSQueue.size())
+            {
+                int x, y;
+                tie(x, y) = unitMovementBFSQueue.front(); unitMovementBFSQueue.pop();
+
+                if ((myPlanet == Earth && earth.earth[x][y]) ||
+                    (myPlanet == Mars && mars.mars[x][y]))
+                {
+                    continue;
+                }
+
+                bc_MapLocation* mapLoc = new_bc_MapLocation(myPlanet, x, y);
+                if (bc_GameController_has_unit_at_location(gc, mapLoc))
+                {
+                    bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                    bc_UnitType type = bc_Unit_unit_type(unit);
+                    uint16_t id = bc_Unit_id(unit);
+                    int attackRange = bc_Unit_attack_range(unit);
+
+                    if ((Voronoi::disToClosestEnemy[x][y] >= attackRange - CLOSENESS_FACTOR || type == Knight) &&
+                        type != Worker && bc_GameController_is_move_ready(gc, id))
+                    {
+                        bc_Direction bestDir = Center;
+                        int bestDist = unitMovementDist[x][y];
+                        for (int d = 0; d < 8; ++d)
+                        {
+                            if (!bc_GameController_can_move(gc, id, (bc_Direction)d)) continue;
+                            
+                            int dx = bc_Direction_dx((bc_Direction)d);
+                            int dy = bc_Direction_dy((bc_Direction)d);
+                            if (unitMovementSeen[x+dx][y+dy] &&
+                                unitMovementDist[x+dx][y+dy] <= bestDist &&
+                                (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange - CLOSENESS_FACTOR))
+                            {
+                                bestDist = unitMovementDist[x+dx][y+dy];
+                                bestDir = (bc_Direction)d;
+                            }
+                        }
+                        if (bestDir != Center)
+                        {
+                            bc_GameController_move_robot(gc, id, bestDir);
+                        }
+                    }
+                    delete_bc_Unit(unit);
+                }
+                delete_bc_MapLocation(mapLoc);
+
+                for (int d = 0; d < 8; ++d)
+                {
+                    int dx = bc_Direction_dx((bc_Direction)d);
+                    int dy = bc_Direction_dy((bc_Direction)d);
+
+                    if (x+dx < 0 || x+dx >= myPlanetC || y+dy < 0 || y+dy >= myPlanetR)
+                    {
+                        continue;
+                    }
+
+                    if (unitMovementSeen[x+dx][y+dy]) continue;
+                    unitMovementSeen[x+dx][y+dy] = 1;
+                    unitMovementDist[x+dx][y+dy] = unitMovementDist[x][y] + 1;
+                    unitMovementBFSQueue.push({x+dx, y+dy});
+                }
+            }
+        }
+
+
         // For each structure which doesn't have enough workers:
         // duplicate workers around it to fulfil the quota
         // (we don't 'steal' workers that are passing by since
-        //  that might stuff us up)
+        //  that might stuff us up (edit: actually we do))
         // also make sure no units are at the locations
         // Note that factories which are completed
         // won't have any assigned.
