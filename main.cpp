@@ -1433,7 +1433,8 @@ void compHealth(bc_GameController* gc)
             bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
             bc_Team team = bc_Unit_team(unit);
             delete_bc_MapLocation(mapLoc);
-            if (team != dealWithRangers.myTeam) { delete_bc_Unit(unit); continue; }
+            bc_UnitType type = bc_Unit_unit_type(unit);
+            if (team != dealWithRangers.myTeam || type == Rocket || type == Factory || type == Healer) { delete_bc_Unit(unit); continue; }
             healthAtSquare[i][j] = bc_Unit_max_health(unit) - bc_Unit_health(unit);
             delete_bc_Unit(unit);
 		}
@@ -2588,6 +2589,7 @@ int main()
                     					uint16_t id = bc_Unit_id(killUnit);
         								bc_GameController_disintegrate_unit(gc, id);
         								printf("Disintegrated unit to unload worker\n");
+        								delete_bc_MapLocation(mapLoc);
                                         delete_bc_Unit(killUnit);
                                         break;
                     				}
