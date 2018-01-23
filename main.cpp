@@ -3133,6 +3133,7 @@ int main()
 
                         structuresToSnipe.back().first -= 30;
                         if (structuresToSnipe.back().first <= 0) structuresToSnipe.pop_back();
+                        printf("SN1P3\n");
                     }
 
                     delete_bc_MapLocation(mapLoc);
@@ -3165,6 +3166,7 @@ int main()
 
                         unitsToSnipe.back().second.first -= 30;
                         if (unitsToSnipe.back().second.first <= 0) unitsToSnipe.pop_back();
+                        printf("SN1P3\n");
                     }
 
                     delete_bc_MapLocation(mapLoc);
