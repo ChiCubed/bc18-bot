@@ -2054,7 +2054,7 @@ int main()
 
         targetEnemies.clear();
 
-        if (round >= 100) {
+        if (round >= 0) { // Early rush
             bc_VecUnit* allUnits = bc_GameController_units(gc);
             int allLen = bc_VecUnit_len(allUnits);
             for (int i = 0; i < allLen; ++i)
