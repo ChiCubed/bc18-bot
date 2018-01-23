@@ -29,6 +29,8 @@ using namespace std;
 
 
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
+#define HealerRange 100
+
 bool earthIsDead = false;
 bool enemyIsDead = false;
 
@@ -1302,7 +1304,7 @@ struct RangerStrat
     {   
         uint16_t id = bc_Unit_id(unit);
         bc_Location* loc = bc_Unit_location(unit);
-        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) { delete_bc_Location(loc); return; }
         bc_MapLocation* mapLoc = bc_Location_map_location(loc);
         int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
@@ -1315,26 +1317,30 @@ struct RangerStrat
 
         // NOTE:
         // Swarm dynamic takes over automatically and sets allowMove to false
-        vector<int> good = findGood(gc, id, x, y);
-        bool isGood[9];
-        fill_n(isGood, 9, false);
-        for (int a : good) isGood[a] = true;
+      //  vector<int> good = findGood(gc, id, x, y);
+        //bool isGood[9];
+      //  fill_n(isGood, 9, false);
+       // for (int a : good) isGood[a] = true;
         // otherwise, lets randomly move;
-        int l = good[rand()%good.size()];
-        if (l != 8)
+     //   int l = good[rand()%good.size()];
+        // don't need to consider good squares - we can't see any enemies if we're walking
+        vector<int> a;
+        for (int i = 0; i < 8; i++) a.push_back(i);
+        random_shuffle(a.begin(), a.end());
+        for (auto l : a)
         {
             if (bc_GameController_can_move(gc, id, (bc_Direction)l))
             {
                 bc_GameController_move_robot(gc, id, (bc_Direction)l);
+                return;
             }
-            else printf("ERROR: Can't move\n");
         }
     }  
     void doJavelinAttack(bc_GameController* gc, bc_Unit* unit)
     {
         uint16_t id = bc_Unit_id(unit);
         bc_Location* loc = bc_Unit_location(unit);
-        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) return;
+        if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) { delete_bc_Location(loc); return; }
         bc_MapLocation* mapLoc = bc_Location_map_location(loc);
         int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
@@ -1381,6 +1387,74 @@ struct RangerStrat
 };
 RangerStrat dealWithRangers;
 
+void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // healerHeal sounds bad ... but its like rangerAttack and mageAttack
+{
+	uint16_t id = bc_Unit_id(unit);
+    bc_Location* loc = bc_Unit_location(unit);
+    if (!bc_Location_is_on_planet(loc, Mars) && !bc_Location_is_on_planet(loc, Earth)) { delete_bc_Location(loc); return; }
+    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+    int x = bc_MapLocation_x_get(mapLoc), y = bc_MapLocation_y_get(mapLoc);
+    delete_bc_Location(loc);
+    delete_bc_MapLocation(mapLoc);
+    vector<pair<int, int> > bestv;
+    int bestWeighting = 0;
+    bc_Unit* newUnit;
+    // for now, check just check all squares
+    if (bc_GameController_is_heal_ready(gc, id))
+    {
+        for (int i = max(0, x-6); i < min(dealWithRangers.c, x+7); i++)
+        {
+            for (int j = max(0, y-6); j < min(dealWithRangers.r, y+7); j++)
+            {
+                if ((i-x)*(i-x) + (j-y)*(j-y) > 30) continue;
+                mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
+                if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
+                bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                bc_Team team = bc_Unit_team(unit);
+                delete_bc_Unit(unit);
+                delete_bc_MapLocation(mapLoc);
+                if (team != dealWithRangers.myTeam) continue;
+                int weighting = bc_Unit_max_health(unit) - bc_Unit_health(unit);
+                if (weighting > bestWeighting)
+                {
+                    bestv.clear();
+                    bestWeighting = weighting;
+                }
+                if (weighting == bestWeighting)
+                {
+                    bestv.emb(i, j);
+                }
+            }
+        }
+        if (bestWeighting)
+        {
+            pair<int, int> best = bestv[rand()%bestv.size()];
+            mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, best.first, best.second);
+            newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+            int friendid = bc_Unit_id(newUnit);
+            delete_bc_MapLocation(mapLoc);
+            delete_bc_Unit(newUnit);
+            if (bc_GameController_can_heal(gc, id, friendid))
+            {   
+                bc_GameController_heal(gc, id, friendid);
+            }     
+            else printf("Error: Can't heal\n");
+        }
+    }
+
+    if (!bc_GameController_is_move_ready(gc, id) || !allowMove) return;
+    vector<int> a;
+    for (int i = 0; i < 8; i++) a.push_back(i);
+    random_shuffle(a.begin(), a.end());
+    for (auto l : a)
+    {
+        if (bc_GameController_can_move(gc, id, (bc_Direction)l))
+        {
+            bc_GameController_move_robot(gc, id, (bc_Direction)l);
+            return;
+        }
+    }
+}
 pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* units, int len, bc_UnitType structure)
 {
     // placed it in a function so that it can be used for rockets as well.
@@ -1930,7 +2004,7 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0, nHealers = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -1954,6 +2028,7 @@ int main()
             }
             if (unitType == Worker) nWorkers++;
             if (unitType == Rocket) nRockets++;
+            if (unitType == Healer) nHealers++;
 
             // don't delete here: we need units later
         }
@@ -2537,26 +2612,33 @@ int main()
 
                     // Choose proportions to make it work well
 
-                    // knights : mages : rangers
-                    vector<int> ratioKMR = {3, 5, 7};
-                    if (round < 425) ratioKMR = {1, 2, 8};
-                    else if (round < 525) ratioKMR = {1, 3, 8};
-                    else if (round < 625) ratioKMR = {2, 4, 7};
-                    int mnDist = getRatioDistance({nKnights + 1, nMages, nRangers}, ratioKMR);
+                    // healers, knights : mages : rangers
+                    vector<int> ratioKMR = {5, 1, 3, 7};
+          			if (round < 350) ratioKMR = {1, 0, 0, 2};
+                    else if (round < 425) ratioKMR = {5, 1, 2, 8};
+                    else if (round < 525) ratioKMR = {5, 1, 3, 8};
+                    int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
-                    if (getRatioDistance({nKnights, nMages + 1, nRangers}, ratioKMR) <= mnDist)
+                    if (getRatioDistance({nHealers, nKnights, nMages + 1, nRangers}, ratioKMR) <= mnDist)
                     {
-                        mnDist = getRatioDistance({nKnights, nMages + 1, nRangers}, ratioKMR);
+                        mnDist = getRatioDistance({nHealers, nKnights, nMages + 1, nRangers}, ratioKMR);
                         type = Mage;
                     }
 
-                    if (getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR) <= mnDist)
+                    if (getRatioDistance({nHealers + 1, nKnights, nMages, nRangers}, ratioKMR) <= mnDist)
                     {
-                        mnDist = getRatioDistance({nKnights, nMages, nRangers + 1}, ratioKMR);
+                        mnDist = getRatioDistance({nHealers + 1, nKnights, nMages, nRangers}, ratioKMR);
+                        type = Healer;
+                    }
+
+                    if (getRatioDistance({nHealers, nKnights, nMages, nRangers + 1}, ratioKMR) <= mnDist)
+                    {
+                        mnDist = getRatioDistance({nHealers, nKnights, nMages, nRangers + 1}, ratioKMR);
                         type = Ranger;
                     }
-                    if (round < 350) type = Ranger;
+
+
                     if (!nWorkers) type = Worker;
                     if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                     {
@@ -2567,6 +2649,7 @@ int main()
                             if (type == Ranger) nRangers++;
                             if (type == Knight) nKnights++;
                             if (type == Mage) nMages++;
+                            if (type == Healer) nHealers++;
                         }
                     }
                     for (int j = 0; j < 8; ++j)
@@ -2721,6 +2804,12 @@ int main()
                         dealWithRangers.findNearestEnemy(gc, unit, !goingToRocket && !targetEnemies.size());
                         
                     }
+                    else if (unitType == Healer)
+                    {
+                    	if (bc_Location_is_in_garrison(loc) ||
+                            bc_Location_is_in_space(loc)) goto loopCleanup;
+                        healerHeal(gc, unit, !goingToRocket && !targetEnemies.size());
+                    }
                 }
             }
 
@@ -2753,6 +2842,7 @@ int main()
                 if (type != Knight && type != Worker)
                 {
                     int attackRange = bc_Unit_attack_range(unit);
+                    if (type == Healer) attackRange = HealerRange;
                     bc_Location* loc = bc_Unit_location(unit);
                     if (!bc_Location_is_in_garrison(loc) &&
                         !bc_Location_is_in_space(loc) &&
@@ -2853,7 +2943,7 @@ int main()
                     bc_UnitType type = bc_Unit_unit_type(unit);
                     uint16_t id = bc_Unit_id(unit);
                     int attackRange = bc_Unit_attack_range(unit);
-
+                    if (type == Healer) attackRange = HealerRange;
                     if ((Voronoi::disToClosestEnemy[x][y] >= attackRange - CLOSENESS_FACTOR || type == Knight) &&
                         type != Worker && bc_GameController_is_move_ready(gc, id))
                     {
