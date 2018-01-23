@@ -482,6 +482,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
+    amWorkers = max(amWorkers, mxWorkersOnEarth);
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -687,7 +688,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         int y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if (mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) ||
+        if ((mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && (round <= 500 || round >= 750)) ||
             round >= 750 ||
             earthIsDead) // we want to have 2 workers per rocket that landed
         {
@@ -1859,29 +1860,24 @@ int main()
             distToInitialEnemy[i][j] = 1e9;
         }
     }
-
     queue<pair<int,int>> bfsQueue;
     bc_VecUnit* initUnits = bc_PlanetMap_initial_units_get(map);
     int len = bc_VecUnit_len(initUnits);
     for (int i = 0; i < len; ++i)
     {
         bc_Unit* unit = bc_VecUnit_index(initUnits, i);
-
         bc_Team team = bc_Unit_team(unit);
         if (team == enemyTeam)
         {
             bc_Location* loc = bc_Unit_location(unit);
             bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-
             int x = bc_MapLocation_x_get(mapLoc);
             int y = bc_MapLocation_y_get(mapLoc);
             bfsQueue.push({x, y});
             distToInitialEnemy[x][y] = 0;
-
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
-
         delete_bc_Unit(unit);
     }
     delete_bc_VecUnit(initUnits);
@@ -1889,7 +1885,6 @@ int main()
     while (bfsQueue.size()) {
         int x, y;
         tie(x, y) = bfsQueue.front(); bfsQueue.pop();
-
         if (x < 0 || x >= earth.c ||
             y < 0 || y >= earth.r ||
             earth.earth[x][y])
@@ -1897,12 +1892,10 @@ int main()
             // unpassable
             continue;
         }
-
         for (int d = 0; d < 8; ++d)
         {
             int dx = bc_Direction_dx((bc_Direction)d),
                 dy = bc_Direction_dy((bc_Direction)d);
-
             if (distToInitialEnemy[x+dx][y+dy] >
                 distToInitialEnemy[x][y] + 1)
             {
