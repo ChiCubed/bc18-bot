@@ -1,8 +1,0 @@
-- (First time running: move deploy.sh and deploy2.sh to the parent directory (bc18-scaffold))
-- go to bc18-scaffold
-- sudo ./run.sh to start docker (in bc18-scaffold)
-- run ./deploy.sh
-- run _deploy against itself in the web interface
-- while running, run ./deploy2.sh
-- stop the match, then test _deploy against itself again and make sure it works
-- submit _deploy to scrims
