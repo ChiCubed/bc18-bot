@@ -88,12 +88,24 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
     set<pair<int, int> > taken;
     unordered_set<int> landedRockets;
     bc_AsteroidPattern* asteroidPattern;
+    void initKarboniteAm(bc_GameController* gc, bc_PlanetMap* planetMap)
+    {
+    	for (int i = 0; i < c; i++)
+    	{
+    		for (int j = 0; j < r; j++)
+    		{
+    			bc_MapLocation* mapLoc = new_bc_MapLocation(Mars, i, j);
+				karbonite[i][j] = bc_PlanetMap_initial_karbonite_at(planetMap, mapLoc);
+    		}
+    	}
+    }
     void init(bc_GameController* gc)
     {
         bc_Planet bc_Planet_mars = Mars;
         bc_PlanetMap* map = bc_GameController_starting_map(gc, bc_Planet_mars);
         r = bc_PlanetMap_height_get(map);
         c = bc_PlanetMap_width_get(map);
+        initKarboniteAm(gc, map);
         bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_mars, 0, 0);
         for (int i = 0; i < c; i++)
         {
@@ -240,10 +252,10 @@ struct MarsSTRUCT //contains a more readable map of mars, as well as the code to
             for (int j = 0; j < r; j++)
             {
                 loc = new_bc_MapLocation(Mars, i, j);
-                karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
-            //    if (karbonite[i][j]) printf("at %d %d\n", i, j);
-             //   if (bc_GameController_has_unit_at_location(gc, loc)) { hasUnit[i][j] = 1; printf("helllo\n"); }
-            //    else hasUnit[i][j] = 0;
+                if (bc_GameController_can_sense_location(gc, loc))
+                {
+                	karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+                }
                 hasUnit[i][j] = 0;
                 delete_bc_MapLocation(loc);
                 workersInComp[comp[i][j]] = 0;
@@ -259,12 +271,24 @@ struct EarthSTRUCT //contains a more readable map of earth
     int seen[60][60], upto, dis[60][60], robotthatlead[60][60], firstdir[60][60], hasUnit[60][60];
     set<pair<int, int> > taken;
     int amKarbonite;
+    void initKarboniteAm(bc_GameController* gc, bc_PlanetMap* planetMap)
+    {
+    	for (int i = 0; i < c; i++)
+    	{
+    		for (int j = 0; j < r; j++)
+    		{
+    			bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, i, j);
+				karbonite[i][j] = bc_PlanetMap_initial_karbonite_at(planetMap, mapLoc);
+    		}
+    	}
+    }
     void init(bc_GameController* gc)
     {
         bc_Planet bc_Planet_earth = Earth;
         bc_PlanetMap* map = bc_GameController_starting_map(gc, bc_Planet_earth);
         r = bc_PlanetMap_height_get(map);
         c = bc_PlanetMap_width_get(map);
+        initKarboniteAm(gc, map);
         bc_MapLocation* loc = new_bc_MapLocation(bc_Planet_earth, 0, 0);
         for (int i = 0; i < c; i++)
         {
@@ -289,7 +313,10 @@ struct EarthSTRUCT //contains a more readable map of earth
             for (int j = 0; j < r; j++)
             {
                 loc = new_bc_MapLocation(Earth, i, j);
-                karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+                if (bc_GameController_can_sense_location(gc, loc))
+                {
+                	karbonite[i][j] = bc_GameController_karbonite_at(gc, loc);
+                }
                 delete_bc_MapLocation(loc);
                 if (karbonite[i][j]) amKarbonite++;
             }
@@ -354,13 +381,15 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     bc_Unit *tmp = bc_GameController_sense_unit_at_location(gc, newLoc);
     if (tmp)
     {
-        printf("Tried to build on a unit.\n");
-
-        delete_bc_Location(loc);
-        delete_bc_MapLocation(mapLoc);
-        delete_bc_MapLocation(newLoc);
+        printf("Deleting unit\n");
+        bc_UnitType unitType = bc_Unit_unit_type(tmp);
+        if (unitType == Rocket || unitType == Factory)
+        {
+        	printf("ERROR: We are destroying a rocket/factory in order to blueprint a rocket/factory!\n");
+        }
+        uint16_t id = bc_Unit_id(tmp);
+        bc_GameController_disintegrate_unit(gc, id);
         delete_bc_Unit(tmp);
-        return false;
     }
 
     if (bc_GameController_can_blueprint(gc, id, type, dir) &&
@@ -1455,7 +1484,7 @@ void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // 
         }
     }
 }
-pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* units, int len, bc_UnitType structure)
+pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* units, int len, bc_UnitType structure, int round)
 {
     // placed it in a function so that it can be used for rockets as well.
             bc_Unit* bestUnit;
@@ -1501,11 +1530,32 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                 for (int d = 0; d < 8; ++d)
                 {
-                    if (bc_GameController_can_blueprint(gc, id, structure, (bc_Direction)d) &&
+                	// we consider killing our own units
+                	int dx = bc_Direction_dx((bc_Direction)d);
+                    int dy = bc_Direction_dy((bc_Direction)d);
+                	bool shouldConsider = false;
+                	if (bc_GameController_can_blueprint(gc, id, structure, (bc_Direction)d)) shouldConsider = true;
+                	else if (round > 50)
+                	{
+                		bc_MapLocation* loc = new_bc_MapLocation(dealWithRangers.myPlanet, x+dx, y+dy);
+                		if (bc_GameController_has_unit_at_location(gc, loc))
+                		{
+                			bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);
+                			if (bc_Unit_team(unit) == dealWithRangers.myTeam)
+                			{
+                				if (bc_Unit_unit_type(unit) != Factory && bc_Unit_unit_type(unit) != Rocket)
+                				{
+                					// lets consider killing this unit
+                					shouldConsider = true;
+                				}
+                			}
+                			delete_bc_Unit(unit);
+                		}
+                		delete_bc_MapLocation(loc);
+                	}
+                    if (shouldConsider &&
                         bc_UnitType_blueprint_cost(structure) <= bc_GameController_karbonite(gc))
                     {
-                        int dx = bc_Direction_dx((bc_Direction)d);
-                        int dy = bc_Direction_dy((bc_Direction)d);
                         // int dist = distToInitialEnemy[x+dx][y+dy];
 
                         // dist is the number of enemy units
@@ -2068,13 +2118,13 @@ int main()
             }
             delete_bc_Location(loc);
         }
-        if (nFactories < 4 && myPlanet == Earth)
+        if (nFactories < 4 && myPlanet == Earth && round >= 5)
         {
 
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
             // from any initial enemy unit location.
-            pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Factory);
+            pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Factory, round);
             bc_Unit* bestUnit = bestLoc.first;
             bc_Direction bestDir = bestLoc.second;
             if (bestDir != Center)
@@ -2097,7 +2147,7 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        int goToMarsRound = 750 - ((earth.r + earth.c));
+        int goToMarsRound = 750 - ((earth.r + earth.c)) - 100;
         if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
@@ -2109,7 +2159,7 @@ int main()
                 if (numberUnits >= 15 && numberUnits/8 > nRockets)
                 {
                     savingForRocket = true;
-                    pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
+                    pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket, round);
                     bc_Unit* bestUnit = bestLoc.first;
                     bc_Direction bestDir = bestLoc.second;
                     if (bestDir != Center)
@@ -2131,7 +2181,7 @@ int main()
                 {
                     // Build a new rocket
                     savingForRocket = true;
-                    pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
+                    pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket, round);
                     bc_Unit* bestUnit = bestLoc.first;
                     bc_Direction bestDir = bestLoc.second;
                     if (bestDir != Center)
@@ -2150,7 +2200,7 @@ int main()
             else if (nFactories >= 3)
             {
                 savingForRocket = true;
-                pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket);
+                pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket, round);
                 bc_Unit* bestUnit = bestLoc.first;
                 bc_Direction bestDir = bestLoc.second;
                 //printf("trying %d\n", bc_GameController_karbonite(gc));
@@ -2487,6 +2537,41 @@ int main()
                 else if (unitType == Factory)
                 {
                     if (myPlanet != Earth) goto loopCleanup;
+
+                    // check for surrounding squares
+                    bc_VecUnitID* myUnits = bc_Unit_structure_garrison(unit);
+                    int garrisonlen = bc_VecUnitID_len(myUnits);
+                    delete_bc_VecUnitID(myUnits);
+                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    int x = bc_MapLocation_x_get(mapLoc);
+                    int y = bc_MapLocation_y_get(mapLoc);
+                    delete_bc_MapLocation(mapLoc);
+                    if (garrisonlen && nWorkers < 2)
+                    {
+                    	// we should disintegrate
+                    	for (int l = 0; l < 8; l++)
+                    	{
+                    		int i = x + bc_Direction_dx((bc_Direction)l);
+                    		int j = y + bc_Direction_dy((bc_Direction)l);
+                    		mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
+                    		if (bc_GameController_has_unit_at_location(gc, mapLoc))
+                    		{
+                    			bc_Unit* killUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                    			if (bc_Unit_team(killUnit) == dealWithRangers.myTeam)
+                    			{
+                    				if (bc_Unit_unit_type(killUnit) != Factory && bc_Unit_unit_type(killUnit) != Rocket)
+                    				{
+                    					uint16_t id = bc_Unit_id(killUnit);
+        								bc_GameController_disintegrate_unit(gc, id);
+        								printf("Disintegrated unit to unload worker\n");
+                    				}
+                    			}
+                    			delete_bc_Unit(killUnit);
+                    		}
+                    		delete_bc_MapLocation(mapLoc);
+                    	}
+                    }
+
                     // Check around the structure to ensure that
                     // at least one unit is permanently assigned to it.
                     // If none are, arbitrarily assign one.
@@ -2639,7 +2724,7 @@ int main()
                     }
 
 
-                    if (!nWorkers) type = Worker;
+                    if (nWorkers < 2) type = Worker;
                     if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
                     {
                         if (bc_GameController_can_produce_robot(gc, id, type))
