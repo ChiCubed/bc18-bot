@@ -2588,7 +2588,7 @@ int main()
                     					uint16_t id = bc_Unit_id(killUnit);
         								bc_GameController_disintegrate_unit(gc, id);
         								printf("Disintegrated unit to unload worker\n");
-                                        delete_bc_Unit(killunit);
+                                        delete_bc_Unit(killUnit);
                                         break;
                     				}
                     			}
