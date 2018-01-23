@@ -1525,8 +1525,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
 
                 // make sure we don't assign one that's the only one
                 // assigned to its structure
-                if (assignedStructure.find(id) != assignedStructure.end() &&
-                    dirAssigned[assignedStructure[id]] == 1)
+                if (assignedStructure.find(id) != assignedStructure.end())
                 {
                     continue;
                 }
