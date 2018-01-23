@@ -1106,53 +1106,7 @@ struct RangerStrat
             }
         }
     }
-    vector<int> backTracking[60][60];
-    void doBfs()
-    {
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++) backTracking[i][j].clear();
-        }
-        upto++;
-        queue<pair<int, int> > q;
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++)
-            {
-                if (hasEnemy[i][j])
-                {
-                    seen[i][j] = upto;
-                    dis[i][j] = 0;
-                    q.emplace(i, j);
-                }
-            }
-        }
-        while (!q.empty())
-        {
-            int x = q.front().first;
-            int y = q.front().second;
-            q.pop();
-            for (int l = 0; l < 8; l++)
-            {
-                int i = x + bc_Direction_dx((bc_Direction)l);
-                int j = y + bc_Direction_dy((bc_Direction)l);
-                if (existsOnMapNotFriendly(i, j) && !hasEnemy[i][j])
-                {
-                    if (seen[i][j] != upto)
-                    {
-                        seen[i][j] = upto;
-                        if (!friendly(i, j)) q.emplace(i, j);
-                        dis[i][j] = dis[x][y]+1;
-                    }
-                    if (dis[i][j] == dis[x][y]+1)
-                    {
-                        int op = (int)bc_Direction_opposite((bc_Direction)l);
-                        backTracking[i][j].pb(op);
-                    }
-                }
-            }
-        }
-    }
+    
     bool mageAttack(bc_GameController* gc, bc_Unit* unit, int x, int y, int id)
     {
         bool attacked = false;
@@ -1349,29 +1303,10 @@ struct RangerStrat
 
         // NOTE:
         // Swarm dynamic takes over automatically and sets allowMove to false
-
         vector<int> good = findGood(gc, id, x, y);
         bool isGood[9];
         fill_n(isGood, 9, false);
         for (int a : good) isGood[a] = true;
-        if (!attacked)
-        {
-        //  printf("moving\n");
-            random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
-            for (int a: backTracking[x][y])
-            {
-                if (isGood[a])
-                {
-                    // lets go to a;
-                    if (bc_GameController_can_move(gc, id, (bc_Direction)a))
-                    {
-                        bc_GameController_move_robot(gc, id, (bc_Direction)a);
-                        return;
-                    }
-                }
-            }
-        }
-        if (attacked && isGood[8]) return; // if we attacked someone, and we can stay where we are, lets do that.
         // otherwise, lets randomly move;
         int l = good[rand()%good.size()];
         if (l != 8)
@@ -1592,10 +1527,10 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             }
             if (!gettingCloseToFlood)
             {
-                if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
-                else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
-                else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
+     //           if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
+       //         else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
+         //       else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
+           //     else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
             {
@@ -1620,7 +1555,7 @@ int distToRocket[60][60];
 bc_Direction directionFromRocket[60][60];
 
 
-void bfsRocketDists(bc_GameController* gc)
+void bfsRocketDists(bc_GameController* gc, int am = 8)
 {
     // Determine the distance of every square
     // from a rocket
@@ -1685,7 +1620,7 @@ void bfsRocketDists(bc_GameController* gc)
         tie(x, y) = Q.front(); Q.pop();
 
         if (earth.earth[x][y]) continue; // unpassable
-        if (rocketThatLedMap[rocketThatLed[x][y]] >= 8) continue;
+        if (rocketThatLedMap[rocketThatLed[x][y]] >= am) continue;
         for (int d = 0; d < 8; ++d)
         {
             bc_Direction dir = (bc_Direction)d;
@@ -1845,7 +1780,6 @@ int main()
         uint32_t round = bc_GameController_round(gc);
         printf("Round %d\n", round);
         dealWithRangers.preCompLoc();
-        dealWithRangers.doBfs();
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
@@ -2096,11 +2030,12 @@ int main()
         // let's tell Mars to begin worker duplication
         if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
-        if (round >= goToMarsRound || enemyIsDead)
+        if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
         {
             // compute distances to rockets
             bfsRocketDists(gc);
         }
+        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
 
 
         // Let's calculate nearest enemies to each point
@@ -2146,12 +2081,13 @@ int main()
                 }
                 else
                 {
-                    targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
+              //      targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
                 }
             }
         }
 
         if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
+ 
 
         // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
 
@@ -2345,7 +2281,7 @@ int main()
             {
                 bool goingToRocket = false;
 
-                if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
+                if (/*(round >= goToMarsRound || enemyIsDead) &&*/ myPlanet == Earth)
                 {
                     // PANIC PANIC PANIC
                     // We've got to get to Mars.
