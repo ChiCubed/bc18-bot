@@ -26,6 +26,8 @@ using namespace std;
 
 #define CLOSENESS_FACTOR 0
 
+#define USE_SNIPE 1
+
 
 
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
@@ -2934,7 +2936,9 @@ int main()
         // tooClose contains pairs of {distance to nearest enemy, unit}
         if (targetEnemies.size())
         {
+            #if USE_SNIPE
             rangersByDistance.clear();
+            #endif
 
             tooClose.clear();
             for (int i = 0; i < len; ++i)
@@ -2955,12 +2959,14 @@ int main()
                         int x = bc_MapLocation_x_get(mapLoc);
                         int y = bc_MapLocation_y_get(mapLoc);
 
+                        #if USE_SNIPE
                         if (type == Ranger)
                         {
                             // this is a ranger
                             // and thus a candidate to shoot some enemies
                             rangersByDistance.push_back({Voronoi::disToClosestEnemy[x][y], {x, y}});
                         }
+                        #endif
 
                         if (Voronoi::disToClosestEnemy[x][y] < attackRange - CLOSENESS_FACTOR)
                         {
@@ -3098,71 +3104,73 @@ int main()
                 }
             }
 
-            // sort the rangers by distance to the closest enemy,
-            // so we can choose which ones to use for sniping
-            sort(rangersByDistance.begin(), rangersByDistance.end());
+            #if USE_SNIPE
+                // sort the rangers by distance to the closest enemy,
+                // so we can choose which ones to use for sniping
+                sort(rangersByDistance.begin(), rangersByDistance.end());
 
-            structuresToSnipe.clear();
+                structuresToSnipe.clear();
 
-            bc_VecUnit* allUnits = bc_GameController_units(gc);
-            int alen = bc_VecUnit_len(allUnits);
-            for (int i = 0; i < alen; ++i)
-            {
-                bc_Unit* unit = bc_VecUnit_index(allUnits, i);
-                if (bc_Unit_team(unit) == enemyTeam &&
-                    (bc_Unit_unit_type(unit) == Factory ||
-                     bc_Unit_unit_type(unit) == Rocket))
+                bc_VecUnit* allUnits = bc_GameController_units(gc);
+                int alen = bc_VecUnit_len(allUnits);
+                for (int i = 0; i < alen; ++i)
                 {
-                    bc_Location* loc = bc_Unit_location(unit);
-                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    bc_Unit* unit = bc_VecUnit_index(allUnits, i);
+                    if (bc_Unit_team(unit) == enemyTeam &&
+                        (bc_Unit_unit_type(unit) == Factory ||
+                         bc_Unit_unit_type(unit) == Rocket))
+                    {
+                        bc_Location* loc = bc_Unit_location(unit);
+                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
 
-                    int x = bc_MapLocation_x_get(mapLoc);
-                    int y = bc_MapLocation_y_get(mapLoc);
+                        int x = bc_MapLocation_x_get(mapLoc);
+                        int y = bc_MapLocation_y_get(mapLoc);
 
-                    int unitHealth = bc_Unit_health(unit);
+                        int unitHealth = bc_Unit_health(unit);
 
-                    structuresToSnipe.push_back({unitHealth, {x, y}});
+                        structuresToSnipe.push_back({unitHealth, {x, y}});
 
-                    delete_bc_Location(loc);
+                        delete_bc_Location(loc);
+                        delete_bc_MapLocation(mapLoc);
+                    }
+                    delete_bc_Unit(unit);
+                }
+                delete_bc_VecUnit(allUnits);
+
+                // for every enemy structure we can see:
+                // try and shoot it
+                int origNRangers = rangersByDistance.size();
+                for (int i = 0; structuresToSnipe.size() && i < origNRangers / 3; ++i)
+                {
+                    int x, y;
+                    tie(x, y) = rangersByDistance.back().second;
+                    rangersByDistance.pop_back();
+
+                    bc_MapLocation* mapLoc = new_bc_MapLocation(myPlanet, x, y);
+                    bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                    uint16_t id = bc_Unit_id(unit);
+
+                    int ex, ey;
+                    tie(ex, ey) = structuresToSnipe.back().second;
+                    bc_MapLocation* enemyMapLoc = new_bc_MapLocation(myPlanet, ex, ey);
+
+                    if (currSnipers.find(id) == currSnipers.end() &&
+                        bc_GameController_can_begin_snipe(gc, id, enemyMapLoc) &&
+                        bc_GameController_is_begin_snipe_ready(gc, id))
+                    {
+                        bc_GameController_begin_snipe(gc, id, enemyMapLoc);
+                        currSnipers.insert(id);
+                        sniperEndTimes.push({id, round + 5});
+
+                        structuresToSnipe.back().first -= 30;
+                        if (structuresToSnipe.back().first <= 0) structuresToSnipe.pop_back();
+                    }
+
                     delete_bc_MapLocation(mapLoc);
+                    delete_bc_Unit(unit);
+                    delete_bc_MapLocation(enemyMapLoc);
                 }
-                delete_bc_Unit(unit);
-            }
-            delete_bc_VecUnit(allUnits);
-
-            // for every enemy structure we can see:
-            // try and shoot it
-            int origNRangers = rangersByDistance.size();
-            for (int i = 0; structuresToSnipe.size() && i < origNRangers / 3; ++i)
-            {
-                int x, y;
-                tie(x, y) = rangersByDistance.back().second;
-                rangersByDistance.pop_back();
-
-                bc_MapLocation* mapLoc = new_bc_MapLocation(myPlanet, x, y);
-                bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
-                uint16_t id = bc_Unit_id(unit);
-
-                int ex, ey;
-                tie(ex, ey) = structuresToSnipe.back().second;
-                bc_MapLocation* enemyMapLoc = new_bc_MapLocation(myPlanet, ex, ey);
-
-                if (currSnipers.find(id) == currSnipers.end() &&
-                    bc_GameController_can_begin_snipe(gc, id, enemyMapLoc) &&
-                    bc_GameController_is_begin_snipe_ready(gc, id))
-                {
-                    bc_GameController_begin_snipe(gc, id, enemyMapLoc);
-                    currSnipers.insert(id);
-                    sniperEndTimes.push({id, round + 5});
-
-                    structuresToSnipe.back().first -= 30;
-                    if (structuresToSnipe.back().first <= 0) structuresToSnipe.pop_back();
-                }
-
-                delete_bc_MapLocation(mapLoc);
-                delete_bc_Unit(unit);
-                delete_bc_MapLocation(enemyMapLoc);
-            }
+            #endif
         }
 
 
