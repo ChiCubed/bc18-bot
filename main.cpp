@@ -2020,7 +2020,7 @@ int main()
         {
             if (round <= 40)
             {
-                extraEarlyGameWorkers = initialReachableKarbonite / 150;
+                extraEarlyGameWorkers = initialReachableKarbonite / 120;
             }
             else
             {
