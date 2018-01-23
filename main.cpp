@@ -2164,8 +2164,8 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        int goToMarsRound = 750 - ((earth.r + earth.c)) - 100;
-        if (myPlanet == Earth && ((round >= lastRocket + 70 && round > 100) || (round >= 650 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
+        int goToMarsRound = 750 - ((earth.r + earth.c)) - 150;
+        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -3324,7 +3324,6 @@ int main()
         delete_bc_VecUnit(units);
 
 
-        if (myPlanet == Earth) earth.updateKarboniteAmount(gc);
         
         if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights, round); // mines karbonite on earth
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
