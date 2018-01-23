@@ -1931,6 +1931,7 @@ int main()
             int x, y;
             tie(x, y) = initialKarboniteBFSQueue.front(); initialKarboniteBFSQueue.pop();
 
+            if (earth.earth[x][y]) continue;
             if (initialKarboniteDist[x][y] >= 15) break;
 
             bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
