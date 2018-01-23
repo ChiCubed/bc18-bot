@@ -1,4 +1,13 @@
-#include "bits/stdc++.h"
+#include <cstdio>
+#include <vector>
+#include <queue>
+#include <algorithm>
+#include <utility>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <cassert>
 using namespace std;
 #define mp make_pair
 #define pb push_back
@@ -53,8 +62,9 @@ int getRatioDistance(vector<int> A, vector<int> B)
 
     int res = 0;
 
-    int sumA = accumulate(A.begin(), A.end(), 0);
-    int sumB = accumulate(B.begin(), B.end(), 0);
+    int sumA = 0, sumB = 0;
+    for (int &e : A) sumA += e;
+    for (int &e : B) sumB += e;
 
     for (int i = 0; i < A.size(); ++i)
     {
