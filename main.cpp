@@ -1,4 +1,13 @@
-#include "bits/stdc++.h"
+#include <cstdio>
+#include <vector>
+#include <queue>
+#include <algorithm>
+#include <utility>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <cassert>
 using namespace std;
 #define mp make_pair
 #define pb push_back
@@ -14,6 +23,8 @@ using namespace std;
 
 
 #define USE_PERMANENTLY_ASSIGNED_WORKERS 0
+
+#define CLOSENESS_FACTOR 0
 
 
 
@@ -51,8 +62,9 @@ int getRatioDistance(vector<int> A, vector<int> B)
 
     int res = 0;
 
-    int sumA = accumulate(A.begin(), A.end(), 0);
-    int sumB = accumulate(B.begin(), B.end(), 0);
+    int sumA = 0, sumB = 0;
+    for (int &e : A) sumA += e;
+    for (int &e : B) sumB += e;
 
     for (int i = 0; i < A.size(); ++i)
     {
@@ -384,6 +396,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     return false;
 }
 int mxWorkersOnEarth = 14;
+int extraEarlyGameWorkers = 0;
 void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
     earth.taken.clear();
@@ -435,6 +448,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         mxWorkersOnEarth = min(14, earth.amKarbonite);
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
+    amWorkers += extraEarlyGameWorkers;
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -1104,53 +1118,7 @@ struct RangerStrat
             }
         }
     }
-    vector<int> backTracking[60][60];
-    void doBfs()
-    {
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++) backTracking[i][j].clear();
-        }
-        upto++;
-        queue<pair<int, int> > q;
-        for (int i = 0; i < c; i++)
-        {
-            for (int j = 0; j < r; j++)
-            {
-                if (hasEnemy[i][j])
-                {
-                    seen[i][j] = upto;
-                    dis[i][j] = 0;
-                    q.emplace(i, j);
-                }
-            }
-        }
-        while (!q.empty())
-        {
-            int x = q.front().first;
-            int y = q.front().second;
-            q.pop();
-            for (int l = 0; l < 8; l++)
-            {
-                int i = x + bc_Direction_dx((bc_Direction)l);
-                int j = y + bc_Direction_dy((bc_Direction)l);
-                if (existsOnMapNotFriendly(i, j) && !hasEnemy[i][j])
-                {
-                    if (seen[i][j] != upto)
-                    {
-                        seen[i][j] = upto;
-                        if (!friendly(i, j)) q.emplace(i, j);
-                        dis[i][j] = dis[x][y]+1;
-                    }
-                    if (dis[i][j] == dis[x][y]+1)
-                    {
-                        int op = (int)bc_Direction_opposite((bc_Direction)l);
-                        backTracking[i][j].pb(op);
-                    }
-                }
-            }
-        }
-    }
+    
     bool mageAttack(bc_GameController* gc, bc_Unit* unit, int x, int y, int id)
     {
         bool attacked = false;
@@ -1347,29 +1315,10 @@ struct RangerStrat
 
         // NOTE:
         // Swarm dynamic takes over automatically and sets allowMove to false
-
         vector<int> good = findGood(gc, id, x, y);
         bool isGood[9];
         fill_n(isGood, 9, false);
         for (int a : good) isGood[a] = true;
-        if (!attacked)
-        {
-        //  printf("moving\n");
-            random_shuffle(backTracking[x][y].begin(), backTracking[x][y].end());
-            for (int a: backTracking[x][y])
-            {
-                if (isGood[a])
-                {
-                    // lets go to a;
-                    if (bc_GameController_can_move(gc, id, (bc_Direction)a))
-                    {
-                        bc_GameController_move_robot(gc, id, (bc_Direction)a);
-                        return;
-                    }
-                }
-            }
-        }
-        if (attacked && isGood[8]) return; // if we attacked someone, and we can stay where we are, lets do that.
         // otherwise, lets randomly move;
         int l = good[rand()%good.size()];
         if (l != 8)
@@ -1590,10 +1539,10 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             }
             if (!gettingCloseToFlood)
             {
-                if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
-                else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-                else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
-                else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
+     //           if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
+       //         else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
+         //       else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
+           //     else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
             }
             if (bc_GameController_can_load(gc, rocketId, id))
             {
@@ -1618,7 +1567,7 @@ int distToRocket[60][60];
 bc_Direction directionFromRocket[60][60];
 
 
-void bfsRocketDists(bc_GameController* gc)
+void bfsRocketDists(bc_GameController* gc, int am = 8)
 {
     // Determine the distance of every square
     // from a rocket
@@ -1683,7 +1632,7 @@ void bfsRocketDists(bc_GameController* gc)
         tie(x, y) = Q.front(); Q.pop();
 
         if (earth.earth[x][y]) continue; // unpassable
-        if (rocketThatLedMap[rocketThatLed[x][y]] >= 8) continue;
+        if (rocketThatLedMap[rocketThatLed[x][y]] >= am) continue;
         for (int d = 0; d < 8; ++d)
         {
             bc_Direction dir = (bc_Direction)d;
@@ -1707,6 +1656,11 @@ void bfsRocketDists(bc_GameController* gc)
 queue<pair<int, int>> unitMovementBFSQueue;
 bool unitMovementSeen[60][60];
 int unitMovementDist[60][60];
+
+
+queue<pair<int, int>> initialKarboniteBFSQueue;
+bool initialKarboniteSeen[60][60];
+int initialKarboniteDist[60][60];
 
 
 int main() 
@@ -1819,23 +1773,64 @@ int main()
     {
         bc_Unit* unit = bc_VecUnit_index(initUnits, i);
 
+        bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+
         bc_Team team = bc_Unit_team(unit);
         if (team == enemyTeam)
         {
-            bc_Location* loc = bc_Unit_location(unit);
-            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-
-            int x = bc_MapLocation_x_get(mapLoc);
-            int y = bc_MapLocation_y_get(mapLoc);
             initialEnemies.push_back({x, y});
-
-            delete_bc_Location(loc);
-            delete_bc_MapLocation(mapLoc);
+        }
+        else
+        {
+            initialKarboniteBFSQueue.push({x, y});
+            initialKarboniteSeen[x][y] = 1;
+            initialKarboniteDist[x][y] = 0;
         }
 
         delete_bc_Unit(unit);
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
     }
     delete_bc_VecUnit(initUnits);
+
+
+    // BFS for all the early-game reachable karbonite
+    int initialReachableKarbonite = 0;
+    if (myPlanet == Earth)
+    {
+        while (initialKarboniteBFSQueue.size())
+        {
+            int x, y;
+            tie(x, y) = initialKarboniteBFSQueue.front(); initialKarboniteBFSQueue.pop();
+
+            if (initialKarboniteDist[x][y] >= 15) break;
+
+            bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
+            initialReachableKarbonite += bc_PlanetMap_initial_karbonite_at(map, mapLoc);
+
+            for (int d = 0; d < 8; ++d)
+            {
+                int dx = bc_Direction_dx((bc_Direction)d);
+                int dy = bc_Direction_dy((bc_Direction)d);
+
+                if (x+dx < 0 || x+dx >= myPlanetC || y+dy < 0 || y+dy >= myPlanetR)
+                {
+                    continue;
+                }
+
+                if (initialKarboniteSeen[x+dx][y+dy]) continue;
+                initialKarboniteSeen[x+dx][y+dy] = 1;
+                initialKarboniteDist[x+dx][y+dy] = initialKarboniteDist[x][y] + 1;
+                initialKarboniteBFSQueue.push({x+dx, y+dy});
+            }
+        }
+    }
+
+    printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
 
     while (true) 
@@ -1843,7 +1838,6 @@ int main()
         uint32_t round = bc_GameController_round(gc);
         printf("Round %d\n", round);
         dealWithRangers.preCompLoc();
-        dealWithRangers.doBfs();
         if (round == 1) //start researching rockets
         {
             printf("Trying to queue research... status: ");
@@ -1884,6 +1878,15 @@ int main()
         }
         else
         {
+            if (round <= 40)
+            {
+                extraEarlyGameWorkers = initialReachableKarbonite / 60;
+            }
+            else
+            {
+                extraEarlyGameWorkers = 0;
+            }
+
             bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
             opponentExists = false;
             for (int i = 0; i < myPlanetC; ++i)
@@ -2094,11 +2097,12 @@ int main()
         // let's tell Mars to begin worker duplication
         if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
 
-        if (round >= goToMarsRound || enemyIsDead)
+        if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
         {
             // compute distances to rockets
             bfsRocketDists(gc);
         }
+        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
 
 
         // Let's calculate nearest enemies to each point
@@ -2107,7 +2111,7 @@ int main()
 
         targetEnemies.clear();
 
-        if (round >= 100) {
+        if (round >= 0) { // Early rush
             bc_VecUnit* allUnits = bc_GameController_units(gc);
             int allLen = bc_VecUnit_len(allUnits);
             for (int i = 0; i < allLen; ++i)
@@ -2144,12 +2148,13 @@ int main()
                 }
                 else
                 {
-                    targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
+              //      targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
                 }
             }
         }
 
         if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
+ 
 
         // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
 
@@ -2343,7 +2348,7 @@ int main()
             {
                 bool goingToRocket = false;
 
-                if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
+                if (/*(round >= goToMarsRound || enemyIsDead) &&*/ myPlanet == Earth)
                 {
                     // PANIC PANIC PANIC
                     // We've got to get to Mars.
@@ -2758,7 +2763,7 @@ int main()
                         int x = bc_MapLocation_x_get(mapLoc);
                         int y = bc_MapLocation_y_get(mapLoc);
 
-                        if (Voronoi::disToClosestEnemy[x][y] < attackRange)
+                        if (Voronoi::disToClosestEnemy[x][y] < attackRange - CLOSENESS_FACTOR)
                         {
                             tooClose.push_back({Voronoi::disToClosestEnemy[x][y], unit});
                         }
@@ -2849,7 +2854,7 @@ int main()
                     uint16_t id = bc_Unit_id(unit);
                     int attackRange = bc_Unit_attack_range(unit);
 
-                    if ((Voronoi::disToClosestEnemy[x][y] >= attackRange || type == Knight) &&
+                    if ((Voronoi::disToClosestEnemy[x][y] >= attackRange - CLOSENESS_FACTOR || type == Knight) &&
                         type != Worker && bc_GameController_is_move_ready(gc, id))
                     {
                         bc_Direction bestDir = Center;
@@ -2862,7 +2867,7 @@ int main()
                             int dy = bc_Direction_dy((bc_Direction)d);
                             if (unitMovementSeen[x+dx][y+dy] &&
                                 unitMovementDist[x+dx][y+dy] <= bestDist &&
-                                (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange))
+                                (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange - CLOSENESS_FACTOR))
                             {
                                 bestDist = unitMovementDist[x+dx][y+dy];
                                 bestDir = (bc_Direction)d;

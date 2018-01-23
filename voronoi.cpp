@@ -4,7 +4,9 @@
  * to each cell in the map.
  */
 
-#include <bits/stdc++.h>
+#include <vector>
+#include <utility>
+#include <cmath>
 using namespace std;
 
 namespace Voronoi
