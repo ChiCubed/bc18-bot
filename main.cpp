@@ -396,6 +396,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     return false;
 }
 int mxWorkersOnEarth = 14;
+int extraEarlyGameWorkers = 0;
 void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
     earth.taken.clear();
@@ -447,6 +448,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         mxWorkersOnEarth = min(14, earth.amKarbonite);
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
+    amWorkers += extraEarlyGameWorkers;
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -1656,6 +1658,11 @@ bool unitMovementSeen[60][60];
 int unitMovementDist[60][60];
 
 
+queue<pair<int, int>> initialKarboniteBFSQueue;
+bool initialKarboniteSeen[60][60];
+int initialKarboniteDist[60][60];
+
+
 int main() 
 {
     printf("Player C++ bot starting\n");
@@ -1766,23 +1773,64 @@ int main()
     {
         bc_Unit* unit = bc_VecUnit_index(initUnits, i);
 
+        bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+
         bc_Team team = bc_Unit_team(unit);
         if (team == enemyTeam)
         {
-            bc_Location* loc = bc_Unit_location(unit);
-            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-
-            int x = bc_MapLocation_x_get(mapLoc);
-            int y = bc_MapLocation_y_get(mapLoc);
             initialEnemies.push_back({x, y});
-
-            delete_bc_Location(loc);
-            delete_bc_MapLocation(mapLoc);
+        }
+        else
+        {
+            initialKarboniteBFSQueue.push({x, y});
+            initialKarboniteSeen[x][y] = 1;
+            initialKarboniteDist[x][y] = 0;
         }
 
         delete_bc_Unit(unit);
+        delete_bc_Location(loc);
+        delete_bc_MapLocation(mapLoc);
     }
     delete_bc_VecUnit(initUnits);
+
+
+    // BFS for all the early-game reachable karbonite
+    int initialReachableKarbonite = 0;
+    if (myPlanet == Earth)
+    {
+        while (initialKarboniteBFSQueue.size())
+        {
+            int x, y;
+            tie(x, y) = initialKarboniteBFSQueue.front(); initialKarboniteBFSQueue.pop();
+
+            if (initialKarboniteDist[x][y] >= 15) break;
+
+            bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
+            initialReachableKarbonite += bc_PlanetMap_initial_karbonite_at(map, mapLoc);
+
+            for (int d = 0; d < 8; ++d)
+            {
+                int dx = bc_Direction_dx((bc_Direction)d);
+                int dy = bc_Direction_dy((bc_Direction)d);
+
+                if (x+dx < 0 || x+dx >= myPlanetC || y+dy < 0 || y+dy >= myPlanetR)
+                {
+                    continue;
+                }
+
+                if (initialKarboniteSeen[x+dx][y+dy]) continue;
+                initialKarboniteSeen[x+dx][y+dy] = 1;
+                initialKarboniteDist[x+dx][y+dy] = initialKarboniteDist[x][y] + 1;
+                initialKarboniteBFSQueue.push({x+dx, y+dy});
+            }
+        }
+    }
+
+    printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
 
     while (true) 
@@ -1830,6 +1878,15 @@ int main()
         }
         else
         {
+            if (round <= 40)
+            {
+                extraEarlyGameWorkers = initialReachableKarbonite / 60;
+            }
+            else
+            {
+                extraEarlyGameWorkers = 0;
+            }
+
             bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
             opponentExists = false;
             for (int i = 0; i < myPlanetC; ++i)
