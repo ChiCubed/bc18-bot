@@ -1417,7 +1417,27 @@ struct RangerStrat
     }    
 };
 RangerStrat dealWithRangers;
-
+int healthAtSquare[60][60];
+void compHealth(bc_GameController* gc)
+{
+	bc_MapLocation* mapLoc;
+	bc_Unit* unit;
+	for (int i = 0; i < dealWithRangers.c; i++)
+	{
+		for (int j = 0; j < dealWithRangers.r; j++)
+		{
+			healthAtSquare[i][j] = 0;
+			mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
+            if (!bc_GameController_has_unit_at_location(gc, mapLoc)) { delete_bc_MapLocation(mapLoc); continue; }
+            bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+            bc_Team team = bc_Unit_team(unit);
+            delete_bc_MapLocation(mapLoc);
+            if (team != dealWithRangers.myTeam) { delete_bc_Unit(unit); continue; }
+            healthAtSquare[i][j] = bc_Unit_max_health(unit) - bc_Unit_health(unit);
+            delete_bc_Unit(unit);
+		}
+	}
+}
 void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // healerHeal sounds bad ... but its like rangerAttack and mageAttack
 {
 	uint16_t id = bc_Unit_id(unit);
@@ -1429,7 +1449,6 @@ void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // 
     delete_bc_MapLocation(mapLoc);
     vector<pair<int, int> > bestv;
     int bestWeighting = 0;
-    bc_Unit* newUnit;
     // for now, check just check all squares
     if (bc_GameController_is_heal_ready(gc, id))
     {
@@ -1438,14 +1457,7 @@ void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // 
             for (int j = max(0, y-6); j < min(dealWithRangers.r, y+7); j++)
             {
                 if ((i-x)*(i-x) + (j-y)*(j-y) > 30) continue;
-                mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
-                if (!bc_GameController_has_unit_at_location(gc, mapLoc)) continue;
-                bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
-                bc_Team team = bc_Unit_team(unit);
-                delete_bc_Unit(unit);
-                delete_bc_MapLocation(mapLoc);
-                if (team != dealWithRangers.myTeam) continue;
-                int weighting = bc_Unit_max_health(unit) - bc_Unit_health(unit);
+                int weighting = healthAtSquare[i][j];
                 if (weighting > bestWeighting)
                 {
                     bestv.clear();
@@ -1461,12 +1473,13 @@ void healerHeal(bc_GameController* gc, bc_Unit* unit, bool allowMove = true) // 
         {
             pair<int, int> best = bestv[rand()%bestv.size()];
             mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, best.first, best.second);
-            newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+            bc_Unit* newUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
             int friendid = bc_Unit_id(newUnit);
             delete_bc_MapLocation(mapLoc);
             delete_bc_Unit(newUnit);
             if (bc_GameController_can_heal(gc, id, friendid))
             {   
+            	healthAtSquare[best.first][best.second] += bc_Unit_damage(unit);
                 bc_GameController_heal(gc, id, friendid);
             }     
             else printf("Error: Can't heal\n");
@@ -2299,7 +2312,7 @@ int main()
  
 
         // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
-
+        compHealth(gc);
         for (int i = 0; i < len; i++)
         {
             bc_Unit *unit = bc_VecUnit_index(units, i);
