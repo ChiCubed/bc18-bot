@@ -15,6 +15,8 @@ using namespace std;
 
 #define USE_PERMANENTLY_ASSIGNED_WORKERS 0
 
+#define CLOSENESS_FACTOR 0
+
 
 
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
@@ -2758,7 +2760,7 @@ int main()
                         int x = bc_MapLocation_x_get(mapLoc);
                         int y = bc_MapLocation_y_get(mapLoc);
 
-                        if (Voronoi::disToClosestEnemy[x][y] < attackRange)
+                        if (Voronoi::disToClosestEnemy[x][y] < attackRange - CLOSENESS_FACTOR)
                         {
                             tooClose.push_back({Voronoi::disToClosestEnemy[x][y], unit});
                         }
@@ -2849,7 +2851,7 @@ int main()
                     uint16_t id = bc_Unit_id(unit);
                     int attackRange = bc_Unit_attack_range(unit);
 
-                    if ((Voronoi::disToClosestEnemy[x][y] >= attackRange || type == Knight) &&
+                    if ((Voronoi::disToClosestEnemy[x][y] >= attackRange - CLOSENESS_FACTOR || type == Knight) &&
                         type != Worker && bc_GameController_is_move_ready(gc, id))
                     {
                         bc_Direction bestDir = Center;
@@ -2862,7 +2864,7 @@ int main()
                             int dy = bc_Direction_dy((bc_Direction)d);
                             if (unitMovementSeen[x+dx][y+dy] &&
                                 unitMovementDist[x+dx][y+dy] <= bestDist &&
-                                (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange))
+                                (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange - CLOSENESS_FACTOR))
                             {
                                 bestDist = unitMovementDist[x+dx][y+dy];
                                 bestDir = (bc_Direction)d;
