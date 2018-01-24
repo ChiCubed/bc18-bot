@@ -2982,6 +2982,7 @@ int main()
             #endif
 
             tooClose.clear();
+            int totalRangers = 0;
             for (int i = 0; i < len; ++i)
             {
                 bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -3005,7 +3006,14 @@ int main()
                         {
                             // this is a ranger
                             // and thus a candidate to shoot some enemies
-                            rangersByDistance.push_back({Voronoi::disToClosestEnemy[x][y], {x, y}});
+                            uint16_t id = bc_Unit_id(unit);
+                            if (currSnipers.find(id) == currSnipers.end() &&
+                                bc_GameController_is_begin_snipe_ready(gc, id))
+                            {
+                                rangersByDistance.push_back({Voronoi::disToClosestEnemy[x][y], {x, y}});
+                            }
+
+                            totalRangers++;
                         }
                         #endif
 
@@ -3144,8 +3152,7 @@ int main()
 
                     // for every enemy structure we can see:
                     // try and shoot it
-                    int origNRangers = rangersByDistance.size();
-                    while (structuresToSnipe.size() && rangersByDistance.size() > origNRangers / 2)
+                    for (int i = 0; structuresToSnipe.size() && rangersByDistance.size() && i < totalRangers / 2; ++i)
                     {
                         int x, y;
                         tie(x, y) = rangersByDistance.back().second;
@@ -3159,9 +3166,7 @@ int main()
                         tie(ex, ey) = structuresToSnipe.back().second;
                         bc_MapLocation* enemyMapLoc = new_bc_MapLocation(myPlanet, ex, ey);
 
-                        if (currSnipers.find(id) == currSnipers.end() &&
-                            bc_GameController_can_begin_snipe(gc, id, enemyMapLoc) &&
-                            bc_GameController_is_begin_snipe_ready(gc, id))
+                        if (bc_GameController_can_begin_snipe(gc, id, enemyMapLoc))
                         {
                             bc_GameController_begin_snipe(gc, id, enemyMapLoc);
                             currSnipers.insert(id);
@@ -3178,7 +3183,7 @@ int main()
                     }
 
                     sort(unitsToSnipe.begin(), unitsToSnipe.end());
-                    while (unitsToSnipe.size() && rangersByDistance.size() > origNRangers / 2)
+                    for (int i = 0; unitsToSnipe.size() && rangersByDistance.size() && i < totalRangers / 2; ++i)
                     {
                         int x, y;
                         tie(x, y) = rangersByDistance.back().second;
@@ -3192,9 +3197,7 @@ int main()
                         tie(ex, ey) = unitsToSnipe.back().second.second;
                         bc_MapLocation* enemyMapLoc = new_bc_MapLocation(myPlanet, ex, ey);
 
-                        if (currSnipers.find(id) == currSnipers.end() &&
-                            bc_GameController_can_begin_snipe(gc, id, enemyMapLoc) &&
-                            bc_GameController_is_begin_snipe_ready(gc, id))
+                        if (bc_GameController_can_begin_snipe(gc, id, enemyMapLoc))
                         {
                             bc_GameController_begin_snipe(gc, id, enemyMapLoc);
                             currSnipers.insert(id);
