@@ -688,7 +688,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         int y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if ((mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && (round <= 500 || round >= 750)) ||
+        if ((mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && (round <= 450 || round >= 750)) ||
             round >= 750 ||
             earthIsDead) // we want to have 2 workers per rocket that landed
         {
@@ -1654,7 +1654,7 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
             }
     return mp(bestUnit, bestDir);
 }
-map<int, int> numWorkersInRocket, numKnightsInRocket, numRangersInRocket, numMagesInRocket;
+map<int, int> numWorkersInRocket, numKnightsInRocket, numRangersInRocket, numMagesInRocket, numHealersInRocket;
 void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc, bool gettingCloseToFlood)
 {
     // tries to load this unit into any adjacent rocket
@@ -1690,6 +1690,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
                 else if (unitType == Knight) numKnightsInRocket[rocketId]++;
                 else if (unitType == Ranger) numRangersInRocket[rocketId]++;
                 else if (unitType == Mage) numMagesInRocket[rocketId]++;
+                else if (unitType == Healer) numHealersInRocket[rocketId]++;
                 printf("Loading into rocket\n");
                 bc_GameController_load(gc, rocketId, id);
             }
@@ -1705,7 +1706,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
 // for loading into rockets post round 700 ish
 int distToRocket[60][60];
 bc_Direction directionFromRocket[60][60];
-
+map<int, int> numWorkersGoingToRocket, numKnightsGoingToRocket, numHealersGoingToRocket, numMagesGoingToRocket;
 
 void bfsRocketDists(bc_GameController* gc, int am = 8)
 {
@@ -1723,7 +1724,9 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
     }
 
     queue<pair<int, int>> Q;
-    
+    numWorkersGoingToRocket.clear();
+    numKnightsGoingToRocket.clear();
+    numHealersGoingToRocket.clear();
     bc_VecUnit* units = bc_GameController_my_units(gc);
     int len = bc_VecUnit_len(units);
     for (int i = 0; i < len; ++i)
@@ -1757,7 +1760,10 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
             distToRocket[x][y] = 0;
             int id = bc_Unit_id(unit);
             rocketThatLed[x][y] = id;
-            rocketThatLedMap[id] = 0;
+            rocketThatLedMap[id] = numWorkersGoingToRocket[id] = numKnightsGoingToRocket[id] = numHealersGoingToRocket[id] = numMagesGoingToRocket[id] = 0;
+            if (numWorkersInRocket.find(id) == numWorkersInRocket.end()) numWorkersInRocket[id] = 0;
+            if (numHealersInRocket.find(id) == numHealersInRocket.end()) numHealersInRocket[id] = 0;
+            if (numKnightsInRocket.find(id) == numKnightsInRocket.end()) numKnightsInRocket[id] = 0;
             delete_bc_Location(loc);
             delete_bc_MapLocation(mapLoc);
         }
@@ -1765,7 +1771,7 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
         delete_bc_Unit(unit);
     }
     delete_bc_VecUnit(units);
-
+    bc_MapLocation* loc;
     while (Q.size())
     {
         int x, y;
@@ -1784,8 +1790,30 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
             if (dealWithRangers.enemy(x+dx, y+dy)) continue;
             rocketThatLed[x+dx][y+dy] = rocketThatLed[x][y];
             distToRocket[x+dx][y+dy] = distToRocket[x][y] + 1;
+
             directionFromRocket[x+dx][y+dy] = dir;
-            if (dealWithRangers.friendly(x+dx, y+dy)) rocketThatLedMap[rocketThatLed[x][y]]++;
+            if (dealWithRangers.friendly(x+dx, y+dy))
+            {
+            	loc = new_bc_MapLocation(dealWithRangers.myPlanet, x+dx, y+dy);
+            	bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);                   
+                bc_UnitType unitType = bc_Unit_unit_type(unit);                       
+                delete_bc_Unit(unit);
+                delete_bc_MapLocation(loc);
+                int id = rocketThatLed[x][y];
+                if (unitType == Worker && numWorkersInRocket[id] + numWorkersGoingToRocket[id] >= 2)  { directionFromRocket[x+dx][y+dy] = (bc_Direction)8; }
+                else if (unitType == Healer && numHealersInRocket[id] + numHealersGoingToRocket[id] >= 3) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
+               	else if (unitType == Knight && numKnightsInRocket[id] + numKnightsGoingToRocket[id] >= 2) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
+               	else if (unitType == Mage && numMagesInRocket[id] + numMagesGoingToRocket[id] >= 3) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
+               	else
+               	{
+               		// all good 
+               		rocketThatLedMap[rocketThatLed[x][y]]++;
+               		if (unitType == Worker) numWorkersGoingToRocket[id]++;
+               		if (unitType == Healer) numHealersGoingToRocket[id]++;
+               		if (unitType == Knight) numKnightsGoingToRocket[id]++;
+               		if (unitType == Mage) numMagesGoingToRocket[id]++;
+               	}
+            }
             seen[x+dx][y+dy] = 1;
             Q.push({x+dx, y+dy});
         }
@@ -2078,7 +2106,7 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0, nHealers = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0, nHealers = 0, nfreeWorkers = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -2103,6 +2131,7 @@ int main()
             if (unitType == Worker) nWorkers++;
             if (unitType == Rocket) nRockets++;
             if (unitType == Healer) nHealers++;
+            if (!bc_Location_is_in_garrison(loc) && unitType == Worker) nfreeWorkers++;
 
             // don't delete here: we need units later
         }
@@ -2171,8 +2200,8 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        int goToMarsRound = 750 - ((earth.r + earth.c)) - 150;
-        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
+        int goToMarsRound = 750 - ((earth.r + earth.c)) - 200;
+        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 30) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -2512,7 +2541,7 @@ int main()
 
                         // Check that the distance from the nearest factory is close enough.
                         // Note: this is approximate, it doesn't really matter
-                        if (distToRocket[x][y] <= 1e9)
+                        if (distToRocket[x][y] <= 1e9 && directionFromRocket[x][y] != (bc_Direction)8)
                         // note: doesn't handle healers at the moment
                         {
                             // Let's move
@@ -2570,7 +2599,7 @@ int main()
                     int x = bc_MapLocation_x_get(mapLoc);
                     int y = bc_MapLocation_y_get(mapLoc);
                     delete_bc_MapLocation(mapLoc);
-                    if (garrisonlen && nWorkers < 2)
+                    if (garrisonlen && nfreeWorkers < 2)
                     {
                     	// we should disintegrate
                     	for (int l = 0; l < 8; l++)
@@ -2725,10 +2754,9 @@ int main()
                     // Choose proportions to make it work well
 
                     // healers, knights : mages : rangers
-                    vector<int> ratioKMR = {5, 1, 3, 7};
+                    vector<int> ratioKMR = {7, 0, 3, 20};
           			if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    else if (round < 425) ratioKMR = {5, 1, 2, 8};
-                    else if (round < 525) ratioKMR = {5, 1, 3, 8};
+                    else if (round < 550) ratioKMR = {5, 0, 1, 9};
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
