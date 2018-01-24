@@ -2106,7 +2106,7 @@ int main()
 
         // Firstly, let's count the number of each unit type
         // note: healers and workers are ignored at the moment
-        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0, nHealers = 0;
+        int nRangers = 0, nKnights = 0, nMages = 0, nFactories = 0, nWorkers = 0, nRockets = 0, nInGarrison = 0, nHealers = 0, nfreeWorkers = 0;
         for (int i = 0; i < len; ++i)
         {
             bc_Unit* unit = bc_VecUnit_index(units, i);
@@ -2131,6 +2131,7 @@ int main()
             if (unitType == Worker) nWorkers++;
             if (unitType == Rocket) nRockets++;
             if (unitType == Healer) nHealers++;
+            if (!bc_Location_is_in_garrison(loc) && unitType == Worker) nfreeWorkers++;
 
             // don't delete here: we need units later
         }
@@ -2598,7 +2599,7 @@ int main()
                     int x = bc_MapLocation_x_get(mapLoc);
                     int y = bc_MapLocation_y_get(mapLoc);
                     delete_bc_MapLocation(mapLoc);
-                    if (garrisonlen && nWorkers < 2)
+                    if (garrisonlen && nfreeWorkers < 2)
                     {
                     	// we should disintegrate
                     	for (int l = 0; l < 8; l++)
