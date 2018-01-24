@@ -482,7 +482,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
-    amWorkers = max(amWorkers, mxWorkersOnEarth);
+    amWorkers = min(amWorkers, mxWorkersOnEarth + 6);
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
