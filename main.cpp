@@ -24,8 +24,6 @@ using namespace std;
 
 #define USE_PERMANENTLY_ASSIGNED_WORKERS 0
 
-#define CLOSENESS_FACTOR 0
-
 #define USE_SNIPE 1
 
 
@@ -2001,6 +1999,8 @@ int main()
 
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
+    int reqNFactories = min(4 + initialReachableKarbonite / 450, 8);
+
 
     while (true) 
     {
@@ -2096,6 +2096,12 @@ int main()
         }
 
 
+
+        // how much closer than range we can get to an enemy unit in our swarm
+        int CLOSENESS_FACTOR = 0;
+        if (round <= 80) CLOSENESS_FACTOR = 5;
+
+
         // clear the set of occupied directions
         // for factories
         dirAssigned.clear();
@@ -2171,7 +2177,7 @@ int main()
             }
             delete_bc_Location(loc);
         }
-        if (nFactories < 4 && myPlanet == Earth && round >= 5)
+        if (nFactories < reqNFactories && myPlanet == Earth && round >= 5)
         {
 
             // Let's find a location for a new factory
@@ -2250,7 +2256,7 @@ int main()
                 }
                 else savingForRocket = false;
             }
-            else if (nFactories >= 3)
+            else if (nFactories >= reqNFactories - 1)
             {
                 savingForRocket = true;
                 pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket, round);
@@ -2837,6 +2843,7 @@ int main()
                                     // NOTE: obsolete as knights now have
                                     // 8-dir attack
 
+                                    /*
                                     if (dir == Northeast || dir == Southeast ||
                                         dir == Southwest || dir == Northwest)
                                     {
@@ -2861,6 +2868,13 @@ int main()
                                                 }
                                             }
                                         }
+                                    }
+                                    */
+                                    if (dir != Center &&
+                                        bc_GameController_can_move(gc, id, dir) &&
+                                        bc_GameController_is_move_ready(gc, id))
+                                    {
+                                        bc_GameController_move_robot(gc, id, dir);
                                     }
                                 }
                                 else
@@ -3256,7 +3270,7 @@ int main()
                         type != Worker && bc_GameController_is_move_ready(gc, id) &&
                         currSnipers.find(id) == currSnipers.end())
                     {
-                        bc_Direction bestDir = Center;
+                        vector<bc_Direction> bestDirs;
                         int bestDist = unitMovementDist[x][y];
                         for (int d = 0; d < 8; ++d)
                         {
@@ -3265,16 +3279,23 @@ int main()
                             int dx = bc_Direction_dx((bc_Direction)d);
                             int dy = bc_Direction_dy((bc_Direction)d);
                             if (unitMovementSeen[x+dx][y+dy] &&
-                                unitMovementDist[x+dx][y+dy] <= bestDist &&
                                 (type == Knight || Voronoi::disToClosestEnemy[x+dx][y+dy] >= attackRange - CLOSENESS_FACTOR))
                             {
-                                bestDist = unitMovementDist[x+dx][y+dy];
-                                bestDir = (bc_Direction)d;
+                                if (unitMovementDist[x+dx][y+dy] < bestDist)
+                                {
+                                    bestDist = unitMovementDist[x+dx][y+dy];
+                                    bestDirs.clear();
+                                }
+                                if (unitMovementDist[x+dx][y+dy] == bestDist)
+                                {
+                                    bestDirs.push_back((bc_Direction)d);
+                                }
                             }
                         }
-                        if (bestDir != Center)
+                        if (bestDirs.size())
                         {
-                            bc_GameController_move_robot(gc, id, bestDir);
+                            // rand shuffle potential move directions
+                            bc_GameController_move_robot(gc, id, bestDirs[rand()%bestDirs.size()]);
                         }
                     }
                     delete_bc_Unit(unit);
