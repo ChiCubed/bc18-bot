@@ -688,7 +688,7 @@ void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the minin
         int y = bc_MapLocation_y_get(mapLoc);
         delete_bc_Location(loc);
         delete_bc_MapLocation(mapLoc);
-        if ((mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && (round <= 500 || round >= 750)) ||
+        if ((mars.workersInComp[mars.comp[x][y]] < min(5*mars.rocketsInComp[mars.comp[x][y]], 2+mars.compsize[mars.comp[x][y]]/5) && (round <= 450 || round >= 750)) ||
             round >= 750 ||
             earthIsDead) // we want to have 2 workers per rocket that landed
         {
@@ -2199,8 +2199,8 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
-        int goToMarsRound = 750 - ((earth.r + earth.c)) - 150;
-        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
+        int goToMarsRound = 750 - ((earth.r + earth.c)) - 200;
+        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 30) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -2753,9 +2753,9 @@ int main()
                     // Choose proportions to make it work well
 
                     // healers, knights : mages : rangers
-                    vector<int> ratioKMR = {5, 1, 3, 8};
+                    vector<int> ratioKMR = {8, 1, 4, 20};
           			if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    else if (round < 550) ratioKMR = {5, 1, 2, 8};
+                    else if (round < 550) ratioKMR = {5, 1, 2, 9};
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
