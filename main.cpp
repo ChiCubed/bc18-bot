@@ -2753,9 +2753,9 @@ int main()
                     // Choose proportions to make it work well
 
                     // healers, knights : mages : rangers
-                    vector<int> ratioKMR = {8, 1, 4, 20};
+                    vector<int> ratioKMR = {7, 0, 3, 20};
           			if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    else if (round < 550) ratioKMR = {5, 1, 2, 9};
+                    else if (round < 550) ratioKMR = {5, 0, 1, 9};
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
