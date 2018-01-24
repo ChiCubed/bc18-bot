@@ -33,7 +33,7 @@ using namespace std;
 
 bool earthIsDead = false;
 bool enemyIsDead = false;
-
+bool needMoreWorkers;
 bool opponentExists;
 int lastRocket, savingForRocket, savingForFactory;
 bool check_errors() 
@@ -1675,16 +1675,83 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
             {
                 numWorkersInRocket[rocketId] = numKnightsInRocket[rocketId] = numRangersInRocket[rocketId] = numMagesInRocket[rocketId] = 0;
             }
-            if (!gettingCloseToFlood)
-            {
-     //           if (unitType == Worker && numWorkersInRocket[rocketId] == 2) continue;
-       //         else if (unitType == Knight && numKnightsInRocket[rocketId] == 2) continue;
-         //       else if (unitType == Ranger && numRangersInRocket[rocketId] == 7) continue;
-           //     else if (unitType == Mage && numMagesInRocket[rocketId] == 3) continue;
-            }
+     	    if (unitType == Worker && numWorkersInRocket[rocketId] >= 2) continue;
             if (bc_GameController_can_load(gc, rocketId, id))
             {
-                if (unitType == Worker) numWorkersInRocket[rocketId]++;
+                if (unitType == Worker) 
+                {
+                	// if we can replicate this round, or if we have already this round
+                	if (bc_Unit_ability_heat(unit) < 10)
+                	{
+                		numWorkersInRocket[rocketId]++;
+                		for (int l = 0; l < 8; l++)
+                		{
+                			if (bc_GameController_can_replicate(gc, id, (bc_Direction)l))
+                			{
+                				bc_GameController_replicate(gc, id, (bc_Direction)l);
+                				printf("Loading working into rocket (after duping)\n");
+                				bc_GameController_load(gc, rocketId, id);
+                				goto rocketCleanup; // RIP, not more goto's
+                			}
+                		}
+                		// ok, lets try disintegrating a unit
+                		bc_Location* loc = bc_Unit_location(unit);
+                		if (!bc_Location_is_on_planet(loc, Earth))
+                		{
+                			delete_bc_Location(loc);
+                			printf("Error: there is a big issue with our code.\n");
+                			goto rocketCleanup;
+                		}
+                		bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                		int x = bc_MapLocation_x_get(mapLoc);
+                		int y = bc_MapLocation_x_get(mapLoc);
+                		delete_bc_Location(loc);
+                		delete_bc_MapLocation(mapLoc);
+                		for (int l = 0; l < 8; l++)
+                		{
+                			int i = x + bc_Direction_dx((bc_Direction)l);
+                			int j = y + bc_Direction_dy((bc_Direction)l);
+                			if (!dealWithRangers.existsOnMapNotFriendly(i, j)) continue;
+                			mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
+                			if (bc_GameController_has_unit_at_location(gc, mapLoc))
+                			{
+                				bc_Unit* dedUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+                				bc_UnitType dedType = bc_Unit_unit_type(dedUnit);
+                				if (dedType != Rocket && dedType != Factory && dedType != Worker && bc_Unit_team(dedUnit) == dealWithRangers.myTeam)
+                				{
+                					uint16_t dedid = bc_Unit_id(dedUnit);
+                					bc_GameController_disintegrate_unit(gc, dedid);
+                					printf("Disintegrated unit\n");
+                					if (bc_GameController_can_replicate(gc, id, (bc_Direction)l))
+       		         				{
+            	    					bc_GameController_replicate(gc, id, (bc_Direction)l);
+                						printf("Loading working into rocket (after duping and killing)\n");
+                						delete_bc_Unit(dedUnit);
+                						delete_bc_MapLocation(mapLoc);
+                						bc_GameController_load(gc, rocketId, id);
+                						goto rocketCleanup; // RIP, not more goto's
+                					}
+                					else printf("ERROR: Couldn't replicate :(\n");
+                					delete_bc_MapLocation(mapLoc);
+                					delete_bc_Unit(dedUnit);
+                					break;
+                				}
+                				delete_bc_Unit(dedUnit);
+                			}
+                			delete_bc_MapLocation(mapLoc);
+                		}
+                		printf("Couldn't replicate ... meh, might as well load\n");
+                		bc_GameController_load(gc, rocketId, id);
+                	}
+                	else if (bc_Unit_ability_heat(unit) >= bc_Unit_ability_cooldown(unit))
+                	{
+                		numWorkersInRocket[rocketId]++;
+                		printf("Loading working into rocket (already duped)\n");
+                		bc_GameController_load(gc, rocketId, id);
+                		goto rocketCleanup;
+                	}
+                	else goto rocketCleanup;
+                }
                 else if (unitType == Knight) numKnightsInRocket[rocketId]++;
                 else if (unitType == Ranger) numRangersInRocket[rocketId]++;
                 else if (unitType == Mage) numMagesInRocket[rocketId]++;
@@ -1692,6 +1759,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
                 printf("Loading into rocket\n");
                 bc_GameController_load(gc, rocketId, id);
             }
+            rocketCleanup: 
             delete_bc_Unit(rocketUnit);
 
         }
@@ -2119,7 +2187,6 @@ int main()
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             bc_Location* loc = bc_Unit_location(unit);
             if (bc_Location_is_in_garrison(loc) && unitType != Worker) nInGarrison++;
-            delete_bc_Location(loc);
             if (unitType == Ranger) nRangers++; 
             if (unitType == Knight) nKnights++;
             if (unitType == Mage) nMages++;
@@ -2138,8 +2205,8 @@ int main()
             if (unitType == Rocket) nRockets++;
             if (unitType == Healer) nHealers++;
             if (!bc_Location_is_in_garrison(loc) && unitType == Worker) nfreeWorkers++;
-
-            // don't delete here: we need units later
+            delete_bc_Location(loc);
+            // don't delete unit here: we need units later
         }
 
         // calculate how many assignees each structure has
@@ -2597,6 +2664,16 @@ int main()
                 {
                     if (myPlanet != Earth) goto loopCleanup;
 
+
+                    // try to unload
+                    for (int j = 0; j < 8; ++j)
+                    {
+                        if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
+                        {
+                        	printf("Unloaded worker from factory\n");
+                            bc_GameController_unload(gc, id, (bc_Direction)j);
+                        }
+                    }
                     // check for surrounding squares
                     bc_VecUnitID* myUnits = bc_Unit_structure_garrison(unit);
                     int garrisonlen = bc_VecUnitID_len(myUnits);
@@ -2631,6 +2708,15 @@ int main()
                     			delete_bc_Unit(killUnit);
                     		}
                     		delete_bc_MapLocation(mapLoc);
+                    	}
+                    	// try to unload again
+                    	for (int j = 0; j < 8; ++j)
+                    	{
+                        	if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
+                        	{
+                        		printf("Unloaded worker from factory\n");
+                            	bc_GameController_unload(gc, id, (bc_Direction)j);
+                        	}	
                     	}
                     }
 
@@ -2761,8 +2847,8 @@ int main()
 
                     // healers, knights : mages : rangers
                     vector<int> ratioKMR = {8, 0, 0, 20}; // {7, 0, 3, 20}
-          			if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    else if (round < 550) ratioKMR = {5, 0, 0, 9}; // {5, 0, 1, 9}
+          			//if (round < 350) ratioKMR = {1, 0, 0, 2};
+                    /*else */if (round < 550) ratioKMR = {1, 0, 0, 2}; // {5, 0, 1, 9}
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
@@ -2786,7 +2872,7 @@ int main()
 
 
                     if (nWorkers < 2) type = Worker;
-                    if ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory)))
+                    if (!nWorkers || ((!savingForRocket || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Rocket)) && (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory))))
                     {
                         if (bc_GameController_can_produce_robot(gc, id, type))
                         {
@@ -2796,15 +2882,6 @@ int main()
                             if (type == Knight) nKnights++;
                             if (type == Mage) nMages++;
                             if (type == Healer) nHealers++;
-                        }
-                    }
-                    for (int j = 0; j < 8; ++j)
-                    {
-                        if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
-                        {
-                            bc_GameController_unload(gc, id, (bc_Direction)j);
-
-                            break;
                         }
                     }
                 }
