@@ -477,7 +477,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     if (round > 200)
     {
         // if we are dying;
-        if (totalUnits < (canMove.size()/2)-2 || savingForRocket) shouldReplicate = false;
+        if (totalUnits/2 < (canMove.size()) || (savingForRocket && bc_GameController_karbonite(gc) <= bc_UnitType_blueprint_cost(Rocket) && canMove.size() > 4)) shouldReplicate = false;
         mxWorkersOnEarth = min(14, earth.amKarbonite);
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
@@ -2250,7 +2250,7 @@ int main()
             delete_bc_Location(loc);
             // don't delete unit here: we need units later
         }
-
+        printf("Free %d : %d\n", nfreeWorkers, nWorkers);
         // calculate how many assignees each structure has
 
         // NOTE:
@@ -2721,14 +2721,18 @@ int main()
 
 
                     // try to unload
+                    bool didUnload = false;
                     for (int j = 0; j < 8; ++j)
                     {
                         if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
                         {
+                        	didUnload = true;
                         	printf("Unloaded from factory\n");
                             bc_GameController_unload(gc, id, (bc_Direction)j);
                         }
                     }
+                    if (!didUnload)
+                    {
                     // check for surrounding squares
                     bc_VecUnitID* myUnits = bc_Unit_structure_garrison(unit);
                     int garrisonlen = bc_VecUnitID_len(myUnits);
@@ -2745,6 +2749,7 @@ int main()
                     		int i = x + bc_Direction_dx((bc_Direction)l);
                     		int j = y + bc_Direction_dy((bc_Direction)l);
                     		mapLoc = new_bc_MapLocation(dealWithRangers.myPlanet, i, j);
+
                     		if (bc_GameController_has_unit_at_location(gc, mapLoc))
                     		{
                     			bc_Unit* killUnit = bc_GameController_sense_unit_at_location(gc, mapLoc);
@@ -2774,7 +2779,7 @@ int main()
                         	}	
                     	}
                     }
-
+                	}
                     // Check around the structure to ensure that
                     // at least one unit is permanently assigned to it.
                     // If none are, arbitrarily assign one.
@@ -3745,7 +3750,7 @@ int main()
 
 
         
-        if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights, round); // mines karbonite on earth
+        if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights + nHealers, round); // mines karbonite on earth
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
 
         fflush(stdout);
