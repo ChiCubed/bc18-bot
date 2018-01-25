@@ -477,8 +477,9 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     if (round > 200)
     {
         // if we are dying;
-        if (totalUnits/2 < (canMove.size()) || (savingForRocket && bc_GameController_karbonite(gc) <= bc_UnitType_blueprint_cost(Rocket) && canMove.size() > 4)) shouldReplicate = false;
+       // if (totalUnits < (canMove.size()*2)-2 || savingForRocket) shouldReplicate = false; shouldReplicate = false;
         mxWorkersOnEarth = min(14, earth.amKarbonite);
+        mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
