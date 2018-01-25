@@ -31,11 +31,13 @@ using namespace std;
 #define RIP_IN_PIECES_MSG ('R' * 256 * 256 + 'I' * 256 + 'P')
 #define HealerRange 100
 
+bool weExisted, shouldGoInGroup;
 bool earthIsDead = false;
 bool enemyIsDead = false;
 bool needMoreWorkers;
 bool opponentExists;
 int lastRocket, savingForRocket, savingForFactory;
+set<pair<int, int> > fullRockets, toDelete; // stores rockets that are full.
 bool check_errors() 
 {
     if (bc_has_err()) 
@@ -481,6 +483,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
     amWorkers = min(amWorkers, mxWorkersOnEarth + 6);
+    random_shuffle(workers.begin(), workers.end());
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
         vector<bc_Unit*> newCanMove;
@@ -1575,46 +1578,32 @@ pair<bc_Unit*, bc_Direction> factoryLocation(bc_GameController* gc, bc_VecUnit* 
                         // dist is the number of enemy units
                         // within 50 steps of the factory.
                         int dist = 0;
-                        bc_VecUnit* enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 50, enemyTeam);
-
-                        // NOTE:
-                        // don't count enemy workers
-                        int eLen = bc_VecUnit_len(enemyUnits);
-                        for (int j = 0; j < eLen; ++j)
+                        if (structure == Factory)
                         {
-                            bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
-                            bc_UnitType etype = bc_Unit_unit_type(eunit);
-                            if (etype != Worker &&
-                                etype != Rocket &&
-                                etype != Factory)
-                            {
-                                dist++;
-                            }
+	                        bc_VecUnit* enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 50, enemyTeam);
 
-                            delete_bc_Unit(eunit);
-                        }
-                        delete_bc_VecUnit(enemyUnits);
-                        if (unitType == Rocket)
-                        {
-                            bc_Team myTeam = (bc_GameController_team(gc) == Red ? Red : Blue);
-                            // we want rockets near our own units
-                            enemyUnits = bc_GameController_sense_nearby_units_by_team(gc, mapLoc, 20, myTeam); 
-                            // they're not enemyUnits, but might as well reuse
-                            int eLen = bc_VecUnit_len(enemyUnits);
-                            for (int j = 0; j < eLen; ++j)
-                            {
-                                bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
-                                bc_UnitType etype = bc_Unit_unit_type(eunit);
-                                if (etype != Worker &&
-                                    etype != Rocket &&
-                                    etype != Factory)
-                                {
-                                    dist--;
-                                }
-                                delete_bc_Unit(eunit);
-                            }
-                            delete_bc_VecUnit(enemyUnits);
-                        }
+    	                    // NOTE:
+        	                // don't count enemy workers
+            	            int eLen = bc_VecUnit_len(enemyUnits);
+                	        for (int j = 0; j < eLen; ++j)
+                    	    {
+                        	    bc_Unit* eunit = bc_VecUnit_index(enemyUnits, j);
+                            	bc_UnitType etype = bc_Unit_unit_type(eunit);
+	                            if (etype != Worker &&
+    	                            etype != Rocket &&
+        	                        etype != Factory)
+            	                {
+                	                dist++;
+                    	        }
+
+	                            delete_bc_Unit(eunit);
+    	                    }
+        	                delete_bc_VecUnit(enemyUnits);
+            			}
+            			else
+            			{
+            				dist = -Voronoi::disToClosestEnemy[x+dx][y+dy];
+            			}            
                         if (dist < maxDist)
                         {
                             maxDist = dist;
@@ -1721,7 +1710,7 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
                 				{
                 					uint16_t dedid = bc_Unit_id(dedUnit);
                 					bc_GameController_disintegrate_unit(gc, dedid);
-                					printf("Disintegrated unit\n");
+                					printf("Disintegrated unit %d %d : me %d %d\n", i, j, x, y);
                 					if (bc_GameController_can_replicate(gc, id, (bc_Direction)l))
        		         				{
             	    					bc_GameController_replicate(gc, id, (bc_Direction)l);
@@ -1887,6 +1876,42 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
 }
 
 
+void launchAllFullRockets(bc_GameController* gc, int round)
+{
+	mars.updateKarboniteAmount(gc);
+	printf("Launching all %lu rockets\n", fullRockets.size());
+	for (auto it = fullRockets.begin(); it != fullRockets.end(); ++it)
+	{	
+		int x = it->first;
+		int y = it->second;
+		if (toDelete.find(make_pair(x, y)) != toDelete.end()) continue;
+		bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
+		if (bc_GameController_has_unit_at_location(gc, mapLoc))
+		{
+			bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+			if (bc_Unit_unit_type(unit) == Rocket)
+			{
+				uint16_t id = bc_Unit_id(unit);
+				pair<int, int> landingLocPair = mars.optimalsquare(round);
+		      	bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
+    		    printf("%d %d\n", landingLocPair.first, landingLocPair.second);
+        		if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
+	    	    {
+    	    	    printf("Launching. . .\n");
+        	    	bc_GameController_launch_rocket(gc, id, landingLoc);
+		        }
+    		    else printf("Launch FAILED\n");
+        		delete_bc_MapLocation(landingLoc);
+			}
+			else printf("No rocket here!\n");
+			delete_bc_Unit(unit);
+		}
+		else printf("Somehow this rocket was killed (this is an issue)\n");
+		delete_bc_MapLocation(mapLoc);
+	}
+	fullRockets.clear();
+}
+
 queue<pair<int, int>> unitMovementBFSQueue;
 bool unitMovementSeen[60][60];
 int unitMovementDist[60][60];
@@ -1917,7 +1942,6 @@ pair<int, int> findParent(int x, int y)
          ? parentUnitLocation[x][y] = findParent(parentUnitLocation[x][y].first, parentUnitLocation[x][y].second)
          : mp(x, y);
 }
-
 
 int main() 
 {
@@ -2126,6 +2150,16 @@ int main()
             }
             mineKarboniteOnMars(gc, round);
         }
+        if (myPlanet == Earth)
+        {
+        	if (round > 50)
+        	{
+        		bc_Veci32* earthArr = bc_GameController_get_team_array(gc, Earth);
+                // assert (bc_Veci32_len(earthArr) >= 1);
+                shouldGoInGroup = (bc_Veci32_index(earthArr, 0) == RIP_IN_PIECES_MSG);
+                delete_bc_Veci32(earthArr);
+        	}
+        }
         else
         {
             if (round <= 40)
@@ -2281,7 +2315,77 @@ int main()
             else savingForFactory = false;
         }
         else savingForFactory = false;
+        
+
+        // if we have no units left:
+        // let's tell Mars to begin worker duplication
+        if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
+        if (myPlanet == Mars && len == 0 && weExisted)
+        {
+        	bc_GameController_write_team_array(gc, 1, RIP_IN_PIECES_MSG);
+        }
+        else if (myPlanet == Mars) bc_GameController_write_team_array(gc, 1, 0);
         int goToMarsRound = 750 - ((earth.r + earth.c)) - 200;
+        if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
+        {
+            // compute distances to rockets
+            bfsRocketDists(gc);
+        }
+        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
+
+
+        // Let's calculate nearest enemies to each point
+        // using discount voronoi
+        // Let's not include workers because they don't do much
+
+        targetEnemies.clear();
+
+        if (round >= 0) { // Early rush
+            bc_VecUnit* allUnits = bc_GameController_units(gc);
+            int allLen = bc_VecUnit_len(allUnits);
+            for (int i = 0; i < allLen; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(allUnits, i);
+                if (bc_Unit_team(unit) == enemyTeam && bc_Unit_unit_type(unit) != Worker)
+                {
+                    bc_Location* loc = bc_Unit_location(unit);
+                    if (!bc_Location_is_in_garrison(loc) &&
+                        !bc_Location_is_in_space(loc) &&
+                        bc_Location_is_on_planet(loc, myPlanet))
+                    {
+                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+
+                        int x = bc_MapLocation_x_get(mapLoc);
+                        int y = bc_MapLocation_y_get(mapLoc);
+                        targetEnemies.push_back({x, y});
+
+                        delete_bc_MapLocation(mapLoc);
+                    }
+                    delete_bc_Location(loc);
+                }
+                delete_bc_Unit(unit);
+            }
+            delete_bc_VecUnit(allUnits);
+
+            if (!targetEnemies.size())
+            {
+                // For now, let's add an arbitrary point to target.
+                // Let's use initial enemy unit locations.
+                if (myPlanet == Earth)
+                {
+                    targetEnemies = initialEnemies;
+                }
+                else
+                {
+              //      targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
+                }
+            }
+        }
+
+        if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
+ 		// Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
+        compHealth(gc);
+
         if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 30) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
@@ -2352,73 +2456,9 @@ int main()
             else printf("Factories: %d\n", nFactories);
         }
 
-        // if we have no units left:
-        // let's tell Mars to begin worker duplication
-        if (myPlanet == Earth && (len == 0)) bc_GameController_write_team_array(gc, 0, RIP_IN_PIECES_MSG);
-
-        if ((round >= goToMarsRound || enemyIsDead) && myPlanet == Earth)
-        {
-            // compute distances to rockets
-            bfsRocketDists(gc);
-        }
-        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
-
-
-        // Let's calculate nearest enemies to each point
-        // using discount voronoi
-        // Let's not include workers because they don't do much
-
-        targetEnemies.clear();
-
-        if (round >= 0) { // Early rush
-            bc_VecUnit* allUnits = bc_GameController_units(gc);
-            int allLen = bc_VecUnit_len(allUnits);
-            for (int i = 0; i < allLen; ++i)
-            {
-                bc_Unit* unit = bc_VecUnit_index(allUnits, i);
-                if (bc_Unit_team(unit) == enemyTeam && bc_Unit_unit_type(unit) != Worker)
-                {
-                    bc_Location* loc = bc_Unit_location(unit);
-                    if (!bc_Location_is_in_garrison(loc) &&
-                        !bc_Location_is_in_space(loc) &&
-                        bc_Location_is_on_planet(loc, myPlanet))
-                    {
-                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-
-                        int x = bc_MapLocation_x_get(mapLoc);
-                        int y = bc_MapLocation_y_get(mapLoc);
-                        targetEnemies.push_back({x, y});
-
-                        delete_bc_MapLocation(mapLoc);
-                    }
-                    delete_bc_Location(loc);
-                }
-                delete_bc_Unit(unit);
-            }
-            delete_bc_VecUnit(allUnits);
-
-            if (!targetEnemies.size())
-            {
-                // For now, let's add an arbitrary point to target.
-                // Let's use initial enemy unit locations.
-                if (myPlanet == Earth)
-                {
-                    targetEnemies = initialEnemies;
-                }
-                else
-                {
-              //      targetEnemies.push_back({myPlanetR-1, myPlanetC-1});
-                }
-            }
-        }
-
-        if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
- 
-
-        // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
-        compHealth(gc);
         for (int i = 0; i < len; i++)
         {
+        	if (myPlanet == Mars) weExisted = true;
             bc_Unit *unit = bc_VecUnit_index(units, i);
             bc_UnitType unitType = bc_Unit_unit_type(unit);
             uint16_t id = bc_Unit_id(unit);
@@ -2652,9 +2692,8 @@ int main()
                     bc_VecUnitID *garrisonUnits = bc_Unit_structure_garrison(unit);
                     int len = bc_VecUnitID_len(garrisonUnits);
                     delete_bc_VecUnitID(garrisonUnits);
-                    if (round == 749 || len == bc_Unit_structure_max_capacity(unit) || bc_Unit_health(unit) <= 140)
+                    if ((round == 749 || bc_Unit_health(unit) <= 140) && len != bc_Unit_structure_max_capacity(unit))
                     {
-                        // lets launch the rocket
                         mars.updateKarboniteAmount(gc);
                         pair<int, int> landingLocPair = mars.optimalsquare(round);
                         bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
@@ -2667,6 +2706,14 @@ int main()
                         else printf("Launch FAILED\n");
                         delete_bc_MapLocation(landingLoc);
                     }
+                    else if (len == bc_Unit_structure_max_capacity(unit) && bc_Location_is_on_map(loc))
+                    {
+                    	bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    	int x = bc_MapLocation_x_get(mapLoc);
+                    	int y = bc_MapLocation_y_get(mapLoc);
+                    	fullRockets.emplace(x, y);
+                    	delete_bc_MapLocation(mapLoc);
+                    }
                 }
                 else if (unitType == Factory)
                 {
@@ -2678,7 +2725,7 @@ int main()
                     {
                         if (bc_GameController_can_unload(gc, id, (bc_Direction)j))
                         {
-                        	printf("Unloaded worker from factory\n");
+                        	printf("Unloaded from factory\n");
                             bc_GameController_unload(gc, id, (bc_Direction)j);
                         }
                     }
@@ -3489,6 +3536,60 @@ int main()
                     unitMovementBFSQueue.push({x+dx, y+dy});
                 }
             }
+        }
+
+        // So if we have 5 full rockets, fly them all. Otherwise if a full rocket is withing 100 of an enemy .. we can't risk it
+        // otherwise, do nothing
+        if ((myPlanet == Earth && fullRockets.size() >= 5) || (round == 749 && fullRockets.size()) || (!shouldGoInGroup && fullRockets.size()))
+        {
+        	launchAllFullRockets(gc, round);
+        }
+        else if (myPlanet == Earth)
+        {
+        	toDelete.clear();
+        	for (auto it = fullRockets.begin(); it != fullRockets.end(); ++it)
+        	{
+        		int x = it->first;
+				int y = it->second;
+				bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
+				if (bc_GameController_has_unit_at_location(gc, mapLoc))
+				{
+					bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, mapLoc);
+					if (bc_Unit_unit_type(unit) == Rocket)
+					{
+						uint16_t id = bc_Unit_id(unit);
+						if (Voronoi::disToClosestEnemy[x][y] <= 100)
+						{
+							printf("Enemy is too close to our rocket!\n");
+							// we can be seen
+							if (fullRockets.size() >= 3)
+							{
+								launchAllFullRockets(gc, round);
+								break;
+							}
+							pair<int, int> landingLocPair = mars.optimalsquare(round);
+					      	bc_MapLocation* landingLoc = new_bc_MapLocation(Mars, landingLocPair.first, landingLocPair.second);
+    					    printf("%d %d\n", landingLocPair.first, landingLocPair.second);
+        					if (bc_GameController_can_launch_rocket(gc, id, landingLoc)) //and now lets take off
+			    		    {
+    			    		    printf("Launching. . .\n");
+        	    				bc_GameController_launch_rocket(gc, id, landingLoc);
+					        }
+    					    else printf("Launch FAILED\n");
+        					delete_bc_MapLocation(landingLoc);
+        					toDelete.emplace(x, y);
+						}
+					}
+					else printf("No rocket here!\n");
+					delete_bc_Unit(unit);
+				}
+				else printf("Somehow this rocket was killed (this is an issue)\n");
+				delete_bc_MapLocation(mapLoc);
+        	}
+        	for (auto a : toDelete)
+        	{
+        		fullRockets.erase(a);
+        	}
         }
 
 
