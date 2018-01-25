@@ -1905,6 +1905,20 @@ unordered_set<uint16_t> currSnipers;
 queue<pair<uint16_t, int>> sniperEndTimes;
 
 
+// For calculation of sizes etc of blobs
+pair<int, int> parentUnitLocation[60][60];
+int minEuclideanDist[60][60];
+int maxEuclideanDist[60][60];
+int sizeOfBlob[60][60];
+
+pair<int, int> findParent(int x, int y)
+{
+    return (parentUnitLocation[x][y].first != x || parentUnitLocation[x][y].second != y)
+         ? parentUnitLocation[x][y] = findParent(parentUnitLocation[x][y].first, parentUnitLocation[x][y].second)
+         : mp(x, y);
+}
+
+
 int main() 
 {
     printf("Player C++ bot starting\n");
@@ -2162,12 +2176,6 @@ int main()
             currSnipers.erase(sniperEndTimes.front().first);
             sniperEndTimes.pop();
         }
-
-
-
-        // how much closer than range we can get to an enemy unit in our swarm
-        int CLOSENESS_FACTOR = 0;
-        if (round <= 80) CLOSENESS_FACTOR = 5;
 
 
         // clear the set of occupied directions
@@ -3072,12 +3080,80 @@ int main()
             rangersByDistance.clear();
             #endif
 
+            // Union find the blobs
+            for (int i = 0; i < 60; ++i) for (int j = 0; j < 60; ++j)
+            {
+                parentUnitLocation[i][j] = {i, j};
+                minEuclideanDist[i][j] = maxEuclideanDist[i][j] = Voronoi::disToClosestEnemy[i][j];
+                sizeOfBlob[i][j] = 1;
+            }
+
+            for (int i = 0; i < len; ++i)
+            {
+                bc_Unit* unit = bc_VecUnit_index(units, i);
+                bc_UnitType type = bc_Unit_unit_type(unit);
+
+                if (type != Worker)
+                {
+                    bc_Location* loc = bc_Unit_location(unit);
+                    if (!bc_Location_is_in_garrison(loc) &&
+                        !bc_Location_is_in_space(loc) &&
+                        bc_Location_is_on_planet(loc, myPlanet))
+                    {
+                        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                        int x = bc_MapLocation_x_get(mapLoc);
+                        int y = bc_MapLocation_y_get(mapLoc);
+
+                        pair<int, int> currParent = findParent(x, y);
+
+                        // Union this with every adjacent unit
+                        for (int d = 0; d < 8; ++d)
+                        {
+                            int dx = bc_Direction_dx((bc_Direction)d);
+                            int dy = bc_Direction_dy((bc_Direction)d);
+
+                            bc_MapLocation* newLoc = bc_MapLocation_add(mapLoc, (bc_Direction)d);
+                            bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, newLoc);
+                            if (unit)
+                            {
+                                if (bc_Unit_team(unit) == currTeam)
+                                {
+                                    pair<int, int> newParent = findParent(x+dx, y+dy);
+                                    if (newParent != currParent)
+                                    {
+                                        if (sizeOfBlob[newParent.first][newParent.second] >
+                                            sizeOfBlob[currParent.first][currParent.second])
+                                        {
+                                            swap(currParent, newParent);
+                                        }
+                                        sizeOfBlob[currParent.first][currParent.second] +=
+                                            sizeOfBlob[newParent.first][newParent.second];
+                                        parentUnitLocation[newParent.first][newParent.second] = currParent;
+                                        minEuclideanDist[currParent.first][currParent.second] = 
+                                            min(minEuclideanDist[currParent.first][currParent.second],
+                                                minEuclideanDist[newParent.first][newParent.second]);
+                                        maxEuclideanDist[currParent.first][currParent.second] =
+                                            max(maxEuclideanDist[currParent.first][currParent.second],
+                                                maxEuclideanDist[newParent.first][newParent.second]);
+                                    }
+                                }
+                                delete_bc_Unit(unit);
+                            }
+                            delete_bc_MapLocation(newLoc);
+                        }
+                        delete_bc_MapLocation(mapLoc);
+                    }
+                    delete_bc_Location(loc);
+                }
+            }
+
             tooClose.clear();
             int totalRangers = 0;
             for (int i = 0; i < len; ++i)
             {
                 bc_Unit* unit = bc_VecUnit_index(units, i);
                 bc_UnitType type = bc_Unit_unit_type(unit);
+
                 if (type != Knight && type != Worker)
                 {
                     int attackRange = bc_Unit_attack_range(unit);
@@ -3108,7 +3184,15 @@ int main()
                         }
                         #endif
 
-                        if (Voronoi::disToClosestEnemy[x][y] < attackRange - CLOSENESS_FACTOR)
+                        pair<int, int> currParent = findParent(x, y);
+                        int sizeOfCurrBlob = sizeOfBlob[currParent.first][currParent.second];
+                        int widthOfCurrBlob = maxEuclideanDist[currParent.first][currParent.second]
+                                            - minEuclideanDist[currParent.first][currParent.second];
+
+                        int TOOCLOSENESS_FACTOR = 5;
+                        if (widthOfCurrBlob < 50 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = 0;
+
+                        if (Voronoi::disToClosestEnemy[x][y] < attackRange - TOOCLOSENESS_FACTOR)
                         {
                             tooClose.push_back({Voronoi::disToClosestEnemy[x][y], unit});
                         }
@@ -3343,6 +3427,16 @@ int main()
                     uint16_t id = bc_Unit_id(unit);
                     int attackRange = bc_Unit_attack_range(unit);
                     if (type == Healer) attackRange = HealerRange;
+
+                    pair<int, int> currParent = findParent(x, y);
+                    int sizeOfCurrBlob = sizeOfBlob[currParent.first][currParent.second];
+                    int widthOfCurrBlob = maxEuclideanDist[currParent.first][currParent.second]
+                                        - minEuclideanDist[currParent.first][currParent.second];
+
+                    int CLOSENESS_FACTOR = 2;
+                    if (widthOfCurrBlob < 50 || sizeOfCurrBlob < 10) CLOSENESS_FACTOR = 0;
+                    if (round <= 80) CLOSENESS_FACTOR = 5;
+
                     if ((Voronoi::disToClosestEnemy[x][y] >= attackRange - CLOSENESS_FACTOR || type == Knight) &&
                         type != Worker && bc_GameController_is_move_ready(gc, id) &&
                         currSnipers.find(id) == currSnipers.end())
@@ -3501,7 +3595,8 @@ int main()
                 bc_MapLocation *structureAdj[8];
                 uint16_t workerid[8];
                 bool hasworker[8];
-                for (int d = 0; d < 8; ++d) {
+                for (int d = 0; d < 8; ++d)
+                {
                     structureAdj[d] = bc_MapLocation_add(mapLoc, (bc_Direction)d);
                     bc_Unit *unit = bc_GameController_sense_unit_at_location(gc, structureAdj[d]);
                     hasworker[d] = !!unit;
