@@ -428,7 +428,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-int mxWorkersOnEarth = 14;
+int mxWorkersOnEarth = 12;
 int extraEarlyGameWorkers = 0;
 void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
@@ -478,12 +478,8 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     {
         // if we are dying;
        // if (totalUnits < (canMove.size()*2)-2 || savingForRocket) shouldReplicate = false; shouldReplicate = false;
-        mxWorkersOnEarth = min(14, earth.amKarbonite);
+        mxWorkersOnEarth = min(12, earth.amKarbonite);
         mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
-    }
-    if (round > 500)
-    {
-    	mxWorkersOnEarth = 0; // will set to 6 because of constant below;
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
@@ -2082,7 +2078,7 @@ int main()
             tie(x, y) = initialKarboniteBFSQueue.front(); initialKarboniteBFSQueue.pop();
 
             if (earth.earth[x][y]) continue;
-            if (initialKarboniteDist[x][y] >= 15) break;
+            if (initialKarboniteDist[x][y] >= 30) break;
 
             bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
             initialReachableKarbonite += bc_PlanetMap_initial_karbonite_at(map, mapLoc);
@@ -2107,7 +2103,9 @@ int main()
 
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
-    int reqNFactories = min(4 + initialReachableKarbonite / 450, 8);
+    int reqNFactories = min(3 + initialReachableKarbonite / 1000, 6);
+
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -2164,7 +2162,7 @@ int main()
         {
             if (round <= 40)
             {
-                extraEarlyGameWorkers = initialReachableKarbonite / 120;
+                extraEarlyGameWorkers = initialReachableKarbonite / 240;
             }
             else
             {
@@ -2903,7 +2901,14 @@ int main()
                     // healers, knights : mages : rangers
                     vector<int> ratioKMR = {8, 0, 0, 20}; // {7, 0, 3, 20}
           			//if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    /*else */if (round < 550) ratioKMR = {1, 0, 0, 2}; // {5, 0, 1, 9}
+                    if (round < 180) ratioKMR = {3, 4, 0, 6};
+                    else if (round < 550) ratioKMR = {1, 0, 0, 2}; // {5, 0, 1, 9}
+
+                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    int x = bc_MapLocation_x_get(mapLoc);
+                    int y = bc_MapLocation_y_get(mapLoc);
+                    delete_bc_MapLocation(mapLoc);
+
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
@@ -3053,7 +3058,7 @@ int main()
 
                             pair<int, int> nearestEnemyLoc = Voronoi::closestEnemy[x][y];
 
-                            uint16_t enemyid = dealWithRangers.enemy(x, y);
+                            uint16_t enemyid = dealWithRangers.enemy(nearestEnemyLoc.first, nearestEnemyLoc.second);
 
                             if (enemyid)
                             {
