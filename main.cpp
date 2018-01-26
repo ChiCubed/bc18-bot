@@ -2160,7 +2160,7 @@ int main()
 
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
-    int reqNFactories = min(3 + initialReachableKarbonite / 1000, 6);
+    int reqNFactories = min(3 + initialReachableKarbonite / 1000, 7);
 
 
     while (true) 
@@ -2358,7 +2358,7 @@ int main()
                 prevFactory = round;
                 uint16_t id = bc_Unit_id(bestUnit);
                 savingForFactory = false;
-                createBlueprint(gc, bestUnit, id, 3, bestDir, Factory);
+                createBlueprint(gc, bestUnit, id, 4, bestDir, Factory);
             }
         }
         else savingForFactory = false;
@@ -2458,7 +2458,7 @@ int main()
                         // yaaay
                         printf("Building a rocket once all opponents are dead\n");
                         uint16_t id = bc_Unit_id(bestUnit);
-                        createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
+                        createBlueprint(gc, bestUnit, id, 4, bestDir, Rocket);
                         savingForRocket = false;
                         lastRocket = round;
                     }
@@ -2480,7 +2480,7 @@ int main()
                         // yaaay
                         printf("Building a rocket after round 700\n");
                         uint16_t id = bc_Unit_id(bestUnit);
-                        createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
+                        createBlueprint(gc, bestUnit, id, 4, bestDir, Rocket);
                         savingForRocket = false;
                         lastRocket = round;
                     }
@@ -2500,7 +2500,7 @@ int main()
                     // yaaay
                     printf("Building a rocket\n");
                     uint16_t id = bc_Unit_id(bestUnit);
-                    createBlueprint(gc, bestUnit, id, 3, bestDir, Rocket);
+                    createBlueprint(gc, bestUnit, id, 4, bestDir, Rocket);
                     savingForRocket = false;
                     lastRocket = round;
                 }
@@ -3298,8 +3298,8 @@ int main()
                         int widthOfCurrBlob = maxEuclideanDist[currParent.first][currParent.second]
                                             - minEuclideanDist[currParent.first][currParent.second];
 
-                        int TOOCLOSENESS_FACTOR = attackRange * 4 / 5;
-                        if (widthOfCurrBlob < 40 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = attackRange * 2 / 5;
+                        int TOOCLOSENESS_FACTOR = (attackRange * 4) / 5;
+                        if (widthOfCurrBlob < 40 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = (attackRange * 2) / 5;
 
                         if (Voronoi::disToClosestEnemy[x][y] < attackRange - TOOCLOSENESS_FACTOR)
                         {
