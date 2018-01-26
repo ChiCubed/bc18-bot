@@ -2165,7 +2165,7 @@ int main()
 
     while (true) 
     {
-        uint32_t round = bc_GameController_round(gc);
+        int round = bc_GameController_round(gc);
         printf("Round %d\n", round);
         dealWithRangers.preCompLoc();
         if (round == 1) //start researching rockets
@@ -2342,7 +2342,7 @@ int main()
             }
             delete_bc_Location(loc);
         }
-        if (nFactories < reqNFactories && myPlanet == Earth && round >= 10 && prevFactory + 20 <= round)
+        if (nFactories < reqNFactories && myPlanet == Earth && round >= 10 && prevFactory + (earth.r+earth.c)/4 <= round)
         {
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
