@@ -2327,7 +2327,7 @@ int main()
                     bc_Unit *structure = bc_GameController_unit(gc, structureid);
 
                     if (structure &&
-                        (!bc_Unit_structure_is_built(structure) || bc_Unit_health(structure) < bc_Unit_max_health(structure)-20
+                        (!bc_Unit_structure_is_built(structure) || bc_Unit_health(structure)+20 < bc_Unit_max_health(structure)
                     #if USE_PERMANENTLY_ASSIGNED_WORKERS
                          || bc_Unit_health(structure) <= 250           
                     #endif
@@ -2443,7 +2443,7 @@ int main()
             // we should make a rocket
             // let's make sure we actually have enough factories
             // before we do anything (or it's super super urgent)
-            int numberUnits = nWorkers + nRangers + nMages + nWorkers - nInGarrison;
+            int numberUnits = nWorkers + nRangers + nHealers + nMages + nWorkers - nInGarrison;
             if (enemyIsDead && round <= goToMarsRound)
             {
                 if (numberUnits >= 15 && numberUnits/8 > nRockets)
@@ -2989,7 +2989,7 @@ int main()
 
 
                     if (nWorkers < 2) type = Worker;
-                    if (!nWorkers || ((!savingForRocket || bc_GameController_karbonite(gc)-50 >= bc_UnitType_blueprint_cost(Rocket)) && (round < 200 || !savingForFactory || bc_GameController_karbonite(gc)-50 >= bc_UnitType_blueprint_cost(Factory))))
+                    if (!nWorkers || ((!savingForRocket || bc_GameController_karbonite(gc) >= bc_UnitType_blueprint_cost(Rocket)+50) && (round < 200 || !savingForFactory || bc_GameController_karbonite(gc) >= bc_UnitType_blueprint_cost(Factory)+50)))
                     {
                         if (bc_GameController_can_produce_robot(gc, id, type))
                         {
@@ -3671,7 +3671,7 @@ int main()
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
-            if (bc_Unit_structure_is_built(structure) && bc_Unit_health(structure) >= bc_Unit_max_health(structure)-20)
+            if (bc_Unit_structure_is_built(structure) && bc_Unit_health(structure)+20 >= bc_Unit_max_health(structure))
             {
                 delete_bc_Unit(structure);
                 continue;
@@ -3810,7 +3810,7 @@ int main()
         delete_bc_VecUnit(units);
 
 
-    //    if (myPlanet == Earth) printf("Saving factory %d - %d - n%d, %d\n", savingForRocket, savingForFactory, nFactories, reqNFactories);
+        if (myPlanet == Earth && round % 10 == 0) printf("Saving for r: %d -f: %d - nF %d, rNF: %d\n", savingForRocket, savingForFactory, nFactories, reqNFactories);
         if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights + nHealers, round); // mines karbonite on earth
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
 
