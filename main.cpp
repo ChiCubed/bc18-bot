@@ -2438,7 +2438,7 @@ int main()
         }
         // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
         compHealth(gc);
-        if (myPlanet == Earth && ((round >= lastRocket + 40 && round >= 250) || (round >= 350 && round >= lastRocket + 25) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
+        if (myPlanet == Earth && ((round >= lastRocket + 40 && round >= 250) || (round >= 350 && round >= lastRocket + 25) || (round >= goToMarsRound-20) || enemyIsDead) && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -2989,7 +2989,7 @@ int main()
 
 
                     if (nWorkers < 2) type = Worker;
-                    if (!nWorkers || ((!savingForRocket || bc_GameController_karbonite(gc)-30 >= bc_UnitType_blueprint_cost(Rocket)) /*&& (!savingForFactory || bc_GameController_karbonite(gc) > bc_UnitType_blueprint_cost(Factory))*/))
+                    if (!nWorkers || ((!savingForRocket || bc_GameController_karbonite(gc)-50 >= bc_UnitType_blueprint_cost(Rocket)) && (round < 200 || !savingForFactory || bc_GameController_karbonite(gc)-50 >= bc_UnitType_blueprint_cost(Factory))))
                     {
                         if (bc_GameController_can_produce_robot(gc, id, type))
                         {
@@ -3810,7 +3810,7 @@ int main()
         delete_bc_VecUnit(units);
 
 
-       // printf("Saving factory %d %d %d\n", savingForFactory, nFactories, reqNFactories);
+    //    if (myPlanet == Earth) printf("Saving factory %d - %d - n%d, %d\n", savingForRocket, savingForFactory, nFactories, reqNFactories);
         if (myPlanet == Earth) mineKarboniteOnEarth(gc, nRangers + nMages + nKnights + nHealers, round); // mines karbonite on earth
         printf("time remaining: %d\n", bc_GameController_get_time_left_ms(gc));
 
