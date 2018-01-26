@@ -431,7 +431,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-int mxWorkersOnEarth = 12;
+int mxWorkersOnEarth = 10;
 int extraEarlyGameWorkers = 0;
 bc_Direction directionFromKarbonite[52][52];
 set<int> workerThatLed[52][52];
@@ -498,9 +498,9 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         mxWorkersOnEarth = min(12, earth.amKarbonite+3);
         mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
     }
-    amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
+    amWorkers = min(amWorkers + 40, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
-    amWorkers = min(amWorkers, mxWorkersOnEarth + 6);
+    amWorkers = min(amWorkers, mxWorkersOnEarth + 40);
     random_shuffle(workers.begin(), workers.end());
     if (canMove.size() < amWorkers && shouldReplicate) // not enough workers...
     {
@@ -2212,15 +2212,6 @@ int main()
         }
         else
         {
-            if (round <= 40)
-            {
-                extraEarlyGameWorkers = initialReachableKarbonite / 240;
-            }
-            else
-            {
-                extraEarlyGameWorkers = 0;
-            }
-
             bc_MapLocation* loc = new_bc_MapLocation(myPlanet, 0, 0);
             opponentExists = false;
             for (int i = 0; i < myPlanetC; ++i)
@@ -2252,6 +2243,15 @@ int main()
                 }
             }
             delete_bc_MapLocation(loc);
+        }
+
+        if (round <= 150)
+        {
+            extraEarlyGameWorkers = initialReachableKarbonite / 240;
+        }
+        else
+        {
+            extraEarlyGameWorkers = 0;
         }
 
 
@@ -3300,8 +3300,8 @@ int main()
                         int widthOfCurrBlob = maxEuclideanDist[currParent.first][currParent.second]
                                             - minEuclideanDist[currParent.first][currParent.second];
 
-                        int TOOCLOSENESS_FACTOR = 5;
-                        if (widthOfCurrBlob < 50 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = 0;
+                        int TOOCLOSENESS_FACTOR = attackRange * 4 / 5;
+                        if (widthOfCurrBlob < 40 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = attackRange * 2 / 5;
 
                         if (Voronoi::disToClosestEnemy[x][y] < attackRange - TOOCLOSENESS_FACTOR)
                         {
