@@ -2107,7 +2107,9 @@ int main()
 
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
-    int reqNFactories = min(4 + initialReachableKarbonite / 450, 8);
+    int reqNFactories = min(4 + initialReachableKarbonite / 1200, 6);
+
+
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -2903,7 +2905,14 @@ int main()
                     // healers, knights : mages : rangers
                     vector<int> ratioKMR = {8, 0, 0, 20}; // {7, 0, 3, 20}
           			//if (round < 350) ratioKMR = {1, 0, 0, 2};
-                    /*else */if (round < 550) ratioKMR = {1, 0, 0, 2}; // {5, 0, 1, 9}
+                    if (round < 180) ratioKMR = {3, 4, 0, 6};
+                    else if (round < 550) ratioKMR = {1, 0, 0, 2}; // {5, 0, 1, 9}
+
+                    bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+                    int x = bc_MapLocation_x_get(mapLoc);
+                    int y = bc_MapLocation_y_get(mapLoc);
+                    delete_bc_MapLocation(mapLoc);
+
                     int mnDist = getRatioDistance({nHealers, nKnights + 1, nMages, nRangers}, ratioKMR);
                     bc_UnitType type = Knight;
 
@@ -3053,7 +3062,7 @@ int main()
 
                             pair<int, int> nearestEnemyLoc = Voronoi::closestEnemy[x][y];
 
-                            uint16_t enemyid = dealWithRangers.enemy(x, y);
+                            uint16_t enemyid = dealWithRangers.enemy(nearestEnemyLoc.first, nearestEnemyLoc.second);
 
                             if (enemyid)
                             {
