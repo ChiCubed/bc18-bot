@@ -554,7 +554,7 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
             int x = Voronoi::closestEnemy[i][j].first;
             int y = Voronoi::closestEnemy[i][j].first;
             bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
-            if (Voronoi::disToClosestEnemy[i][j] <= 50 && round > 75)
+            if ((Voronoi::disToClosestEnemy[i][j] <= 50 && round > 150))
             {
                 closestUnitIsBad[i][j] = true;
             }
@@ -586,8 +586,8 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         x = q.front().second.first; 
         y = q.front().second.second;
         q.pop();
-        if (alreadyAssignedKarb.find(worker) != alreadyAssignedKarb.end()) continue;
-        if (earth.karbonite[x][y] && !karboniteHereHasBeenTaken[x][y] && !closestUnitIsBad[x][y])
+        if (alreadyAssignedKarb.find(worker) != alreadyAssignedKarb.end() || closestUnitIsBad[x][y]) continue;
+        if (earth.karbonite[x][y] && !karboniteHereHasBeenTaken[x][y])
         {
             karboniteHereHasBeenTaken[x][y] = true;
             amMoved++;
