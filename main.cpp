@@ -306,8 +306,8 @@ struct EarthSTRUCT //contains a more readable map of earth
         delete_bc_MapLocation(loc);
         delete_bc_PlanetMap(map);
     }
-    void updateKarboniteAmount(bc_GameController* gc) // this function will be used until the asteroid thing is fixed
-    { // I think this only has karbonite within the viewable range ......... rip.....
+    void updateKarboniteAmount(bc_GameController* gc)
+    { 
         bc_MapLocation* loc;
         amKarbonite = 0;
         for (int i = 0; i < c; i++)
@@ -430,10 +430,15 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
 }
 int mxWorkersOnEarth = 12;
 int extraEarlyGameWorkers = 0;
+bc_Direction directionFromKarbonite[52][52];
+set<int> workerThatLed[52][52];
+map<int, int> initialDir[52][52];
+set<int> alreadyAssignedKarb;
+bool karboniteHereHasBeenTaken[52][52];
+bool closestUnitIsBad[52][52];
 void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
     earth.taken.clear();
-    earth.updateKarboniteAmount(gc);
     bc_VecUnit *units = bc_GameController_my_units(gc); 
     int len = bc_VecUnit_len(units);
     vector<bc_Unit*> canMove;
@@ -472,13 +477,16 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         }
         else delete_bc_Unit(unit);
     }
+
+    earth.updateKarboniteAmount(gc); //update how much karbonite is at each square
+
     int amWorkers = totalUnits/20;
     bool shouldReplicate = true;
     if (round > 200)
     {
         // if we are dying;
-       // if (totalUnits < (canMove.size()*2)-2 || savingForRocket) shouldReplicate = false; shouldReplicate = false;
-        mxWorkersOnEarth = min(12, earth.amKarbonite);
+      	if (savingForRocket && canMove.size() > 3) shouldReplicate = false;
+        mxWorkersOnEarth = min(12, earth.amKarbonite+3);
         mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
@@ -525,98 +533,85 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 
         canMove.insert(canMove.end(), newCanMove.begin(), newCanMove.end());
     }
-    while (!canMove.empty()) // where should we move to
+    for (int i = 0; i < earth.c; i++)
     {
-        bool worked = false;
-        earth.upto++;
-        queue<pair<int, int> > q;
-        for (int i = 0; i < canMove.size(); i++)
-        {
-            auto unit = canMove[i];
-            bc_Location* loc = bc_Unit_location(unit);
-            bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-            int x = bc_MapLocation_x_get(mapLoc);
-            int y = bc_MapLocation_y_get(mapLoc);
-            earth.seen[x][y] = earth.upto;
-            earth.robotthatlead[x][y] = i;
-            earth.firstdir[x][y] = 8;
-            q.emplace(x, y);
-            delete_bc_MapLocation(mapLoc);
-            delete_bc_Location(loc);
-        }
-        while (!q.empty())
-        {
-            int x = q.front().first;
-            int y = q.front().second;
-          //  if (x == 12 && y == 10) printf("YAYAYAY\n");
-         //   printf("%d %d\n", x, y);
-            q.pop();
-            if (earth.karbonite[x][y] && earth.taken.find(mp(x, y)) == earth.taken.end())
-            {
-                // We've reached some karbonite. Send the robot in question here;
-                earth.taken.insert(mp(x, y));
-
-                bc_Unit* unit = canMove[earth.robotthatlead[x][y]];
-                canMove.erase(canMove.begin()+earth.robotthatlead[x][y]);
-                int dir = earth.firstdir[x][y];
-                uint16_t id = bc_Unit_id(unit);
-                // Update the location of robots;
-                bc_Location* loc = bc_Unit_location(unit);
-                bc_MapLocation* mapLoc = bc_Location_map_location(loc);
-                int i = bc_MapLocation_x_get(mapLoc);
-                int j = bc_MapLocation_y_get(mapLoc);
-                delete_bc_MapLocation(mapLoc);
-                delete_bc_Location(loc);
-                earth.hasUnit[i][j] = 0;
-                if (bc_GameController_can_move(gc, id, (bc_Direction)dir))
+    	for (int j = 0; j < earth.r; j++)
+    	{
+    		workerThatLed[i][j].clear();
+    		initialDir[i][j].clear();
+    		karboniteHereHasBeenTaken[i][j] = false;
+    		closestUnitIsBad[i][j] = false;
+    		int x = Voronoi::closestEnemy[i][j].first;
+    		int y = Voronoi::closestEnemy[i][j].first;
+    		bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
+    		if (Voronoi::disToClosestEnemy[i][j] <= 50 && round > 150)
+    		{
+    			closestUnitIsBad[i][j] = true;
+    		}
+    		delete_bc_MapLocation(mapLoc);
+    	}
+    }
+    queue<pair<int, pair<int, int> > > q;
+    alreadyAssignedKarb.clear();
+    for (int i = 0; i < canMove.size(); i++)
+    {
+        auto unit = canMove[i];
+        bc_Location* loc = bc_Unit_location(unit);
+        bc_MapLocation* mapLoc = bc_Location_map_location(loc);
+        int x = bc_MapLocation_x_get(mapLoc);
+        int y = bc_MapLocation_y_get(mapLoc);
+        uint16_t id = bc_Unit_id(unit);
+        workerThatLed[x][y].insert(id);
+        initialDir[x][y][id] = 8;
+        q.emplace(id, make_pair(x, y));
+        delete_bc_MapLocation(mapLoc);
+        delete_bc_Location(loc);
+    }
+    int amMoved = 0;
+    bc_MapLocation* mapLoc;
+    while (!q.empty() && amMoved < earth.amKarbonite)
+    {
+    	int x, y, worker;
+        worker = q.front().first; 
+        x = q.front().second.first; 
+        y = q.front().second.second;
+       	q.pop();
+       	if (alreadyAssignedKarb.find(worker) != alreadyAssignedKarb.end()) continue;
+       	if (earth.karbonite[x][y] && !karboniteHereHasBeenTaken[x][y] && !closestUnitIsBad[x][y])
+       	{
+       		karboniteHereHasBeenTaken[x][y] = true;
+       		amMoved++;
+       		int dir = initialDir[x][y][worker];
+       		if (dir != 8)
+       		{
+       			if (bc_GameController_can_move(gc, worker, (bc_Direction)dir))
                 {
-                    bc_GameController_move_robot(gc, id, (bc_Direction)dir);
+                    bc_GameController_move_robot(gc, worker, (bc_Direction)dir);
                 }
-                // Set the newloc
-                loc = bc_Unit_location(unit);
-                mapLoc = bc_Location_map_location(loc);
-                i = bc_MapLocation_x_get(mapLoc);
-                j = bc_MapLocation_y_get(mapLoc);
-                delete_bc_MapLocation(mapLoc);
-                delete_bc_Location(loc);
-                earth.hasUnit[i][j] = 1;
-                delete_bc_Unit(unit);
-                worked = true;
-                break;
-            }   
-            if (earth.earth[x][y] || (earth.hasUnit[x][y] && earth.firstdir[x][y] != 8)) continue;
-            for (int l = 0; l < 8; l++) // consider going this direction
-            {
-                int i = x + bc_Direction_dx((bc_Direction)l);
-                int j = y + bc_Direction_dy((bc_Direction)l);
-                if (i >= 0 && i < earth.c && j >= 0 && j < earth.r && earth.seen[i][j] != earth.upto)
-                {
-                    earth.seen[i][j] = earth.upto;
-                    earth.robotthatlead[i][j] = earth.robotthatlead[x][y];
-                    if (earth.firstdir[x][y] == 8) earth.firstdir[i][j] = l;
-                    else earth.firstdir[i][j] = earth.firstdir[x][y];
-                    q.emplace(i, j);
-                }
-            }
-        }
-        if (!worked)
-        {
-            for (auto unit : canMove)
-            {
-                // randomly walk
-                uint16_t id = bc_Unit_id(unit);
-                for (int i = 0; i < 8; i++)
-                {
-                    int l = rand()%8;
-                    if (bc_GameController_is_move_ready(gc, id) && bc_GameController_can_move(gc, id, (bc_Direction)l))
-                    {
-                        bc_GameController_move_robot(gc, id, (bc_Direction)l);
-                    }   
-                }
-                delete_bc_Unit(unit);
-            }
-            canMove.clear();
-        }
+       		}
+       		alreadyAssignedKarb.insert(worker);
+       		continue;
+       	}
+       	if (earth.earth[x][y]) continue; // unpassable
+       	mapLoc = new_bc_MapLocation(Earth, x, y);
+       	if (bc_GameController_has_unit_at_location(gc, mapLoc) && initialDir[x][y][worker] != 8) continue;
+       	delete_bc_MapLocation(mapLoc);
+       	for (int l = 0; l < 8; l++)
+       	{
+       		int i = x + bc_Direction_dx((bc_Direction)l);
+       		int j = y + bc_Direction_dy((bc_Direction)l);
+       		if (workerThatLed[i][j].find(worker) != workerThatLed[i][j].end()) continue;
+       		if (i < 0 || i >= earth.c || j < 0 || j >= earth.r) continue;
+       		workerThatLed[i][j].insert(worker);
+       		q.emplace(worker, make_pair(i, j));
+       		int dir = initialDir[x][y][worker];
+       		if (dir != 8) initialDir[i][j][worker] = dir;
+       		else initialDir[i][j][worker] = l;
+       	}
+    }
+    for (auto unit : canMove)
+    {
+    	delete_bc_Unit(unit);
     }
 }
 void mineKarboniteOnMars(bc_GameController* gc, int round) // Controls the mining of Karbonite on mars
@@ -3273,6 +3268,9 @@ int main()
                 int x = bc_MapLocation_x_get(mapLoc);
                 int y = bc_MapLocation_y_get(mapLoc);
 
+                int attackRange = bc_Unit_attack_range(unit);
+                if (bc_Unit_unit_type(unit) == Healer) attackRange = HealerRange;
+
                 bc_Direction bestDir = Center;
                 for (int d = 0; d < 8; ++d)
                 {
@@ -3281,7 +3279,7 @@ int main()
                     int dx = bc_Direction_dx((bc_Direction)d);
                     int dy = bc_Direction_dy((bc_Direction)d);
 
-                    if (Voronoi::disToClosestEnemy[x+dx][y+dy] >= currDist)
+                    if (Voronoi::disToClosestEnemy[x+dx][y+dy] >= currDist && Voronoi::disToClosestEnemy[x+dx][y+dy] <= attackRange)
                     {
                         bestDir = (bc_Direction)d;
                         currDist = Voronoi::disToClosestEnemy[x+dx][y+dy];
