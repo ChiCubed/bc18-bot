@@ -428,7 +428,7 @@ bool createBlueprint(bc_GameController* gc, bc_Unit* mainWorker, uint16_t id, in
     delete_bc_MapLocation(newLoc);
     return false;
 }
-int mxWorkersOnEarth = 14;
+int mxWorkersOnEarth = 12;
 int extraEarlyGameWorkers = 0;
 void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
 {
@@ -478,12 +478,8 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
     {
         // if we are dying;
        // if (totalUnits < (canMove.size()*2)-2 || savingForRocket) shouldReplicate = false; shouldReplicate = false;
-        mxWorkersOnEarth = min(14, earth.amKarbonite);
+        mxWorkersOnEarth = min(12, earth.amKarbonite);
         mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
-    }
-    if (round > 500)
-    {
-    	mxWorkersOnEarth = 0; // will set to 6 because of constant below;
     }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
@@ -2166,7 +2162,7 @@ int main()
         {
             if (round <= 40)
             {
-                extraEarlyGameWorkers = initialReachableKarbonite / 120;
+                extraEarlyGameWorkers = initialReachableKarbonite / 240;
             }
             else
             {
