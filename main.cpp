@@ -2078,7 +2078,7 @@ int main()
             tie(x, y) = initialKarboniteBFSQueue.front(); initialKarboniteBFSQueue.pop();
 
             if (earth.earth[x][y]) continue;
-            if (initialKarboniteDist[x][y] >= 15) break;
+            if (initialKarboniteDist[x][y] >= 30) break;
 
             bc_MapLocation* mapLoc = new_bc_MapLocation(Earth, x, y);
             initialReachableKarbonite += bc_PlanetMap_initial_karbonite_at(map, mapLoc);
@@ -2103,7 +2103,7 @@ int main()
 
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
-    int reqNFactories = min(4 + initialReachableKarbonite / 1200, 6);
+    int reqNFactories = min(3 + initialReachableKarbonite / 1000, 6);
 
 
     while (true) 
