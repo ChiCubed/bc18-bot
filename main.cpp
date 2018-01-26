@@ -481,6 +481,10 @@ void mineKarboniteOnEarth(bc_GameController* gc, int totalUnits, int round)
         mxWorkersOnEarth = min(14, earth.amKarbonite);
         mxWorkersOnEarth = min(mxWorkersOnEarth, totalUnits/2);
     }
+    if (round > 500)
+    {
+    	mxWorkersOnEarth = 0; // will set to 6 because of constant below;
+    }
     amWorkers = min(amWorkers + 6, mxWorkersOnEarth);
     amWorkers += extraEarlyGameWorkers;
     amWorkers = min(amWorkers, mxWorkersOnEarth + 6);
@@ -1763,23 +1767,19 @@ void tryToLoadIntoRocket(bc_GameController* gc, bc_Unit* unit, bc_Location* loc,
 int distToRocket[60][60];
 bc_Direction directionFromRocket[60][60];
 map<int, int> numWorkersGoingToRocket, numKnightsGoingToRocket, numHealersGoingToRocket, numMagesGoingToRocket;
-
+set<int> rocketThatLed[52][52];
 void bfsRocketDists(bc_GameController* gc, int am = 8)
 {
     // Determine the distance of every square
     // from a rocket
-
-    bool seen[60][60];
-    int rocketThatLed[60][60];
     map<int, int> rocketThatLedMap;
-    for (int i = 0; i < 60; ++i) for (int j = 0; j < 60; ++j)
+    for (int i = 0; i < 52; ++i) for (int j = 0; j < 52; ++j)
     {
         distToRocket[i][j] = 2e9;
-        seen[i][j] = 0;
-        rocketThatLed[i][j] = 0;
+        rocketThatLed[i][j].clear();
     }
 
-    queue<pair<int, int>> Q;
+    queue<pair<int, pair<int, int>>> Q;
     numWorkersGoingToRocket.clear();
     numKnightsGoingToRocket.clear();
     numHealersGoingToRocket.clear();
@@ -1811,11 +1811,10 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
             bc_MapLocation* mapLoc = bc_Location_map_location(loc);
             int x = bc_MapLocation_x_get(mapLoc);
             int y = bc_MapLocation_y_get(mapLoc);
-            Q.push({x, y});
-            seen[x][y] = 1;
-            distToRocket[x][y] = 0;
             int id = bc_Unit_id(unit);
-            rocketThatLed[x][y] = id;
+            Q.push({id, make_pair(x, y)});
+            distToRocket[x][y] = 0;
+            rocketThatLed[x][y].insert(id);
             rocketThatLedMap[id] = numWorkersGoingToRocket[id] = numKnightsGoingToRocket[id] = numHealersGoingToRocket[id] = numMagesGoingToRocket[id] = 0;
             if (numWorkersInRocket.find(id) == numWorkersInRocket.end()) numWorkersInRocket[id] = 0;
             if (numHealersInRocket.find(id) == numHealersInRocket.end()) numHealersInRocket[id] = 0;
@@ -1830,11 +1829,12 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
     bc_MapLocation* loc;
     while (Q.size())
     {
-        int x, y;
-        tie(x, y) = Q.front(); Q.pop();
+        int x, y, rocket;
+        rocket = Q.front().first; x = Q.front().second.first; y = Q.front().second.second;
+       	Q.pop();
 
         if (earth.earth[x][y]) continue; // unpassable
-        if (rocketThatLedMap[rocketThatLed[x][y]] >= am) continue;
+        if (rocketThatLedMap[rocket] >= am) continue;
         for (int d = 0; d < 8; ++d)
         {
             bc_Direction dir = (bc_Direction)d;
@@ -1842,36 +1842,37 @@ void bfsRocketDists(bc_GameController* gc, int am = 8)
             int dy = bc_Direction_dy(dir);
             if (x + dx < 0 || x + dx >= earth.c ||
                 y + dy < 0 || y + dy >= earth.r) continue;
-            if (seen[x+dx][y+dy]) continue;
-            if (dealWithRangers.enemy(x+dx, y+dy)) continue;
-            rocketThatLed[x+dx][y+dy] = rocketThatLed[x][y];
-            distToRocket[x+dx][y+dy] = distToRocket[x][y] + 1;
-
-            directionFromRocket[x+dx][y+dy] = dir;
-            if (dealWithRangers.friendly(x+dx, y+dy))
+            if (dealWithRangers.enemy(x+dx, y+dy) || !dealWithRangers.existsOnMapNotFriendly(x+dx, y+dy)) continue;
+            if (rocketThatLed[x+dx][y+dy].find(rocket) != rocketThatLed[x+dx][y+dy].end()) continue;
+            if (rocketThatLed[x+dx][y+dy].empty())
+            {
+            	distToRocket[x+dx][y+dy] = distToRocket[x][y] + 1;
+            	directionFromRocket[x+dx][y+dy] = dir;
+            }   
+            if (dealWithRangers.friendly(x+dx, y+dy) && rocketThatLed[x+dx][y+dy].empty())
             {
             	loc = new_bc_MapLocation(dealWithRangers.myPlanet, x+dx, y+dy);
             	bc_Unit* unit = bc_GameController_sense_unit_at_location(gc, loc);                   
                 bc_UnitType unitType = bc_Unit_unit_type(unit);                       
                 delete_bc_Unit(unit);
                 delete_bc_MapLocation(loc);
-                int id = rocketThatLed[x][y];
+                int id = rocket;
                 if (unitType == Worker && numWorkersInRocket[id] + numWorkersGoingToRocket[id] >= 2)  { directionFromRocket[x+dx][y+dy] = (bc_Direction)8; }
                 else if (unitType == Healer && numHealersInRocket[id] + numHealersGoingToRocket[id] >= 3) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
                	else if (unitType == Knight && numKnightsInRocket[id] + numKnightsGoingToRocket[id] >= 2) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
                	else if (unitType == Mage && numMagesInRocket[id] + numMagesGoingToRocket[id] >= 3) { directionFromRocket[x+dx][y+dy] = (bc_Direction)8;}
-               	else
+               	else if (unitType != Rocket && unitType != Factory)
                	{
                		// all good 
-               		rocketThatLedMap[rocketThatLed[x][y]]++;
+               		rocketThatLedMap[id]++;
                		if (unitType == Worker) numWorkersGoingToRocket[id]++;
                		if (unitType == Healer) numHealersGoingToRocket[id]++;
                		if (unitType == Knight) numKnightsGoingToRocket[id]++;
                		if (unitType == Mage) numMagesGoingToRocket[id]++;
                	}
             }
-            seen[x+dx][y+dy] = 1;
-            Q.push({x+dx, y+dy});
+            rocketThatLed[x+dx][y+dy].insert(rocket);
+            Q.push({rocket, make_pair(x+dx, y+dy)});
         }
     }
 }
@@ -2107,8 +2108,6 @@ int main()
     printf("Early-game karbonite to harvest: %d\n", initialReachableKarbonite);
 
     int reqNFactories = min(4 + initialReachableKarbonite / 450, 8);
-
-
     while (true) 
     {
         uint32_t round = bc_GameController_round(gc);
@@ -2289,7 +2288,6 @@ int main()
         }
         if (nFactories < reqNFactories && myPlanet == Earth && round >= 5)
         {
-
             // Let's find a location for a new factory
             // next to a worker that's as far as possible
             // from any initial enemy unit location.
@@ -2332,8 +2330,7 @@ int main()
             // compute distances to rockets
             bfsRocketDists(gc);
         }
-        else if (myPlanet == Earth) bfsRocketDists(gc, 4);
-
+        else if (myPlanet == Earth) bfsRocketDists(gc, 6);
 
         // Let's calculate nearest enemies to each point
         // using discount voronoi
@@ -2386,8 +2383,7 @@ int main()
         if (targetEnemies.size()) Voronoi::findClosest(targetEnemies, myPlanetR, myPlanetC);
  		// Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
         compHealth(gc);
-
-        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 400 && round >= lastRocket + 30) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
+        if (myPlanet == Earth && ((round >= lastRocket + 40 && round >= 250) || (round >= 350 && round >= lastRocket + 25) || (round >= goToMarsRound-20) || enemyIsDead) && !savingForFactory && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
@@ -2436,7 +2432,7 @@ int main()
                 }
                 else savingForRocket = false;
             }
-            else if (nFactories >= reqNFactories - 1)
+            else
             {
                 savingForRocket = true;
                 pair<bc_Unit*, bc_Direction> bestLoc = factoryLocation(gc, units, len, Rocket, round);
@@ -2454,9 +2450,7 @@ int main()
                     lastRocket = round;
                 }
             }
-            else printf("Factories: %d\n", nFactories);
         }
-
         for (int i = 0; i < len; i++)
         {
         	if (myPlanet == Mars) weExisted = true;
@@ -3612,7 +3606,7 @@ int main()
             uint16_t structureid; int numAssigned;
             tie(structureid, numAssigned) = P;
             bc_Unit *structure = bc_GameController_unit(gc, structureid);
-            if (bc_Unit_structure_is_built(structure))
+            if (bc_Unit_structure_is_built(structure) && bc_Unit_health(structure) > bc_Unit_max_health(structure)-40)
             {
                 delete_bc_Unit(structure);
                 continue;
@@ -3644,7 +3638,7 @@ int main()
                 while (Q.size())
                 {
                     tie(x, y) = Q.front(); Q.pop();
-                    if (dist[x][y] > 6) break;
+                    if (dist[x][y] > 5 && numAssigned) break;
                     if (numAssigned >= reqAssignees[structureid]) break;
 
                     if (earth.earth[x][y]) continue;
@@ -3663,11 +3657,12 @@ int main()
                                 numAssigned++;
                             }
                         }
-                        delete_bc_Unit(unitAtLoc);
-                        if (x ^ ox || y ^ oy)
+                        else if (x ^ ox || y ^ oy)
                         {
+                        	delete_bc_Unit(unitAtLoc);
                             continue;
                         }
+                        delete_bc_Unit(unitAtLoc);
                     }
 
                     for (int d = 0; d < 8; ++d)
