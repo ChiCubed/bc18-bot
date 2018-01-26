@@ -3300,8 +3300,8 @@ int main()
                         int widthOfCurrBlob = maxEuclideanDist[currParent.first][currParent.second]
                                             - minEuclideanDist[currParent.first][currParent.second];
 
-                        int TOOCLOSENESS_FACTOR = 5;
-                        if (widthOfCurrBlob < 50 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = 0;
+                        int TOOCLOSENESS_FACTOR = attackRange * 4 / 5;
+                        if (widthOfCurrBlob < 40 || sizeOfCurrBlob < 10) TOOCLOSENESS_FACTOR = attackRange * 2 / 5;
 
                         if (Voronoi::disToClosestEnemy[x][y] < attackRange - TOOCLOSENESS_FACTOR)
                         {
