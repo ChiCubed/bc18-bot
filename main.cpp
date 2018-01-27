@@ -2438,7 +2438,7 @@ int main()
         }
         // Also, if targetEnemies.size(), we don't want units to do their normal walking stuff
         compHealth(gc);
-        if (myPlanet == Earth && ((round >= lastRocket + 40 && round >= 250) || (round >= 350 && round >= lastRocket + 25) || (round >= goToMarsRound-20) || enemyIsDead) && nWorkers)
+        if (myPlanet == Earth && ((round >= lastRocket + 50 && round >= 250) || (round >= 350 && round >= lastRocket + 40) || (round >= goToMarsRound-20) || enemyIsDead) && nWorkers)
         {
             // we should make a rocket
             // let's make sure we actually have enough factories
